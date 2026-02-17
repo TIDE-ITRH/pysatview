@@ -1,1 +1,0 @@
-# Himawari satellite API module
