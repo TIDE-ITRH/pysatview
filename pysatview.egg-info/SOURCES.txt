@@ -1,7 +1,0 @@
-README.md
-setup.py
-pysatview.egg-info/PKG-INFO
-pysatview.egg-info/SOURCES.txt
-pysatview.egg-info/dependency_links.txt
-pysatview.egg-info/requires.txt
-pysatview.egg-info/top_level.txt
