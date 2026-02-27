@@ -1,0 +1,30 @@
+Metadata-Version: 2.4
+Name: pysatview
+Version: 0.0.0
+Summary: Python package for satellite data downloading.
+Home-page: https://github.com/TIDE-ITRH/pysatview
+Author: Group 12
+Author-email: william.edge@uwa.edu.au
+License: BSD-3-Clause
+Project-URL: Bug Tracker, https://github.com/TIDE-ITRH/pysatview/issues
+Project-URL: Changelog, https://github.com/TIDE-ITRH/pysatview/releases
+Classifier: Programming Language :: Python :: 3
+Classifier: License :: OSI Approved :: BSD License
+Classifier: Intended Audience :: Developers
+Description-Content-Type: text/markdown
+Requires-Dist: numpy
+Requires-Dist: pandas
+Requires-Dist: xarray
+Requires-Dist: matplotlib
+Requires-Dist: cmocean
+Requires-Dist: earthaccess
+Requires-Dist: owslib
+Requires-Dist: eumdac
+Requires-Dist: tqdm
+Requires-Dist: notebook
+Requires-Dist: ipykernel
+Requires-Dist: urllib3
+Requires-Dist: seaborn
+Requires-Dist: netcdf4
+Requires-Dist: python-dateutil
+Requires-Dist: pathlib2

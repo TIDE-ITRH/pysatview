@@ -13,30 +13,37 @@ from datetime import datetime
 from fastapi import BackgroundTasks, HTTPException
 import asyncio
 
-# Add himawari_test_data to path for imports
-himawari_path = Path(__file__).parent.parent.parent / "get_data" / "himawari_test_data"
-if str(himawari_path) not in sys.path:
-    sys.path.insert(0, str(himawari_path))
+# Add package basedir
+pkg_path = Path(__file__).parent.parent.parent.parent
 
-from satellites.shared.base_api import BaseSatelliteAPI
-from satellites.shared.models import (
+# Add himawari_test_data to path for imports
+himawari_path = pkg_path / "test_data" / "himawari"
+# if str(himawari_path) not in sys.path:
+#     sys.path.insert(0, str(himawari_path))
+
+from pysatview.shared.base_api import BaseSatelliteAPI
+from pysatview.shared.models import (
     ProcessingRequest, ProcessingStatus, FileInfo, HealthStatus, 
     SatelliteSystemStatus, SystemInfo, DataStatus, StorageInfo
 )
-from satellites.shared.utils import get_system_info, get_file_count
+from pysatview.shared.utils import get_system_info, get_file_count
+
+
 
 class HimawariAPI(BaseSatelliteAPI):
     """Himawari satellite API implementation"""
     
     def __init__(self):
         # Base directory for Himawari data
-        base_dir = Path(__file__).parent.parent.parent / "get_data" / "himawari_test_data" / "data" / "himawari_l3c"
+        base_dir = himawari_path
         super().__init__("Himawari-9", str(base_dir))
         
+        # Ensure self.base_dir is a Path object
+        self.base_dir = Path(self.base_dir)
+        
         # Directory paths
-        self.parts_dir = self.base_dir / "parts"
+        self.parts_dir = self.base_dir / "nc"
         self.png_dir = self.base_dir / "png"
-        self.temp_dir = self.base_dir / "temp"
         
         # Try to import Himawari modules
         self.processor = None
@@ -51,7 +58,7 @@ class HimawariAPI(BaseSatelliteAPI):
             # Try to import himawari_processor
             himawari_processor = None
             try:
-                import himawari_processor
+                from . import himawari_processor
                 himawari_processor = himawari_processor
             except ImportError:
                 # If direct import fails, try with sys.path manipulation
@@ -446,7 +453,7 @@ class HimawariAPI(BaseSatelliteAPI):
         """Auto monitor and repair"""
         # Check for missing files and start repair if needed
         check_results = self.file_monitor.check_file_completeness(
-            timelims=('2025-10-01T00:00:00', datetime.utcnow().isoformat()),
+            timelims=('2025-10-01T00:00:00', '2025-10-01T03:00:00'),
             tstep=3600
         )
         
@@ -464,7 +471,7 @@ class HimawariAPI(BaseSatelliteAPI):
             # Start repair task
             repair_data = {
                 "start_time": '2025-10-01T00:00:00',
-                "end_time": datetime.utcnow().isoformat(),
+                "end_time": '2025-10-01T03:00:00',
                 "west_lon": 111.0,
                 "east_lon": 114.0,
                 "south_lat": -25.0,

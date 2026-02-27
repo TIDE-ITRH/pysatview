@@ -1,0 +1,16 @@
+numpy
+pandas
+xarray
+matplotlib
+cmocean
+earthaccess
+owslib
+eumdac
+tqdm
+notebook
+ipykernel
+urllib3
+seaborn
+netcdf4
+python-dateutil
+pathlib2

@@ -48,8 +48,8 @@ class Sentinel3API(BaseSatelliteAPI):
             # Try to import usingtheEumetview
             eumetview_module = None
             try:
-                import usingtheEumetview
-                eumetview_module = usingtheEumetview
+                import pysatview.src.pysatview.sentinel3.sentinel3_processor as sentinel3_processor
+                eumetview_module = sentinel3_processor
             except ImportError:
                 # If direct import fails, try with sys.path manipulation
                 import importlib.util

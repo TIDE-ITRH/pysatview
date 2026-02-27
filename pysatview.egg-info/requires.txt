@@ -1,0 +1,13 @@
+numpy
+pandas
+xarray
+pyproj
+matplotlib
+earthaccess
+owslib
+eumdac
+urllib3
+netcdf4
+python-dateutil
+pathlib2
+tqdm

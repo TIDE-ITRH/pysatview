@@ -44,10 +44,10 @@ class SwotAPI(BaseSatelliteAPI):
         """Initialize SWOT processor, workflow, and file monitor"""
         try:
             # Try to import swot_processor
-            swot_processor = None
+            swot_processor_AVISO = None
             try:
-                import swot_processor
-                swot_processor = swot_processor
+                import pysatview.src.pysatview.swot.swot_processor_AVISO as swot_processor_AVISO
+                swot_processor_AVISO = swot_processor_AVISO
             except ImportError:
                 # If direct import fails, try with sys.path manipulation
                 import importlib.util
@@ -57,22 +57,22 @@ class SwotAPI(BaseSatelliteAPI):
                 )
                 if spec is None or spec.loader is None:
                     raise ImportError(f"Could not load swot_processor from {swot_path / 'swot_processor.py'}")
-                swot_processor = importlib.util.module_from_spec(spec)
-                spec.loader.exec_module(swot_processor)
+                swot_processor_AVISO = importlib.util.module_from_spec(spec)
+                spec.loader.exec_module(swot_processor_AVISO)
             
             # Initialize components with error handling
-            if hasattr(swot_processor, 'SwotDataProcessor'):
-                self.processor = swot_processor.SwotDataProcessor(str(self.base_dir))
+            if hasattr(swot_processor_AVISO, 'SwotDataProcessor'):
+                self.processor = swot_processor_AVISO.SwotDataProcessor(str(self.base_dir))
             else:
                 raise AttributeError("SwotDataProcessor class not found in swot_processor module")
                 
-            if hasattr(swot_processor, 'SwotWorkflow'):
-                self.workflow = swot_processor.SwotWorkflow(str(self.base_dir))
+            if hasattr(swot_processor_AVISO, 'SwotWorkflow'):
+                self.workflow = swot_processor_AVISO.SwotWorkflow(str(self.base_dir))
             else:
                 raise AttributeError("SwotWorkflow class not found in swot_processor module")
                 
-            if hasattr(swot_processor, 'create_file_monitor'):
-                self.file_monitor = swot_processor.create_file_monitor(str(self.base_dir))
+            if hasattr(swot_processor_AVISO, 'create_file_monitor'):
+                self.file_monitor = swot_processor_AVISO.create_file_monitor(str(self.base_dir))
             else:
                 raise AttributeError("create_file_monitor function not found in swot_processor module")
                 

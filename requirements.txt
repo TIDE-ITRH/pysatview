@@ -27,8 +27,8 @@ geopandas>=0.13.0
 
 # Data Visualization
 matplotlib>=3.7.0
-seaborn>=0.12.0
-plotly>=5.14.0
+# seaborn>=0.12.0
+# plotly>=5.14.0
 
 # Satellite Data Access
 earthaccess>=0.8.0
@@ -48,41 +48,41 @@ sqlalchemy>=2.0.0
 psycopg2-binary>=2.9.7
 alembic>=1.12.0
 
-# Async Task Processing
-celery>=5.3.0
-redis>=5.0.0
+# # Async Task Processing
+# celery>=5.3.0
+# redis>=5.0.0
 
-# Data Validation and Serialization
-marshmallow>=3.20.0
-jsonschema>=4.19.0
+# # Data Validation and Serialization
+# marshmallow>=3.20.0
+# jsonschema>=4.19.0
 
-# HTTP Clients and Requests
-httpx>=0.25.0
-requests>=2.31.0
-aiofiles>=23.2.0
+# # HTTP Clients and Requests
+# httpx>=0.25.0
+# requests>=2.31.0
+# aiofiles>=23.2.0
 
-# Configuration and Environment
-python-dotenv>=1.0.0
-pyyaml>=6.0.1
+# # Configuration and Environment
+# python-dotenv>=1.0.0
+# pyyaml>=6.0.1
 
-# Testing (Development)
-pytest>=7.4.0
-pytest-asyncio>=0.21.0
-pytest-cov>=4.1.0
+# # Testing (Development)
+# pytest>=7.4.0
+# pytest-asyncio>=0.21.0
+# pytest-cov>=4.1.0
 
-# Code Quality (Development)
-black>=23.0.0
-flake8>=6.0.0
-isort>=5.12.0
-mypy>=1.5.0
+# # Code Quality (Development)
+# black>=23.0.0
+# flake8>=6.0.0
+# isort>=5.12.0
+# mypy>=1.5.0
 
-# Authentication and Security
-python-jose[cryptography]>=3.3.0
-passlib[bcrypt]>=1.7.4
+# # Authentication and Security
+# python-jose[cryptography]>=3.3.0
+# passlib[bcrypt]>=1.7.4
 
-# Monitoring and Logging
-structlog>=23.1.0
-prometheus-client>=0.17.0
+# # Monitoring and Logging
+# structlog>=23.1.0
+# prometheus-client>=0.17.0
 
 # File Processing
 netcdf4>=1.6.4
@@ -95,17 +95,17 @@ psutil>=5.9.0
 # SSL/TLS Support (for EUMETView)
 urllib3>=2.0.0
 
-# XML Processing (for WCS responses)
-lxml>=4.9.0
+# # XML Processing (for WCS responses)
+# lxml>=4.9.0
 
-# Date/Time Processing (for timestamp handling)
-python-dateutil>=2.8.0
+# # Date/Time Processing (for timestamp handling)
+# python-dateutil>=2.8.0
 
-# Additional utilities
-tqdm>=4.66.0
-click>=8.1.0
-rich>=13.5.0
+# # Additional utilities
+# tqdm>=4.66.0
+# click>=8.1.0
+# rich>=13.5.0
 
-# Development and Testing
-pytest-timeout>=2.1.0
-coverage>=7.3.0
+# # Development and Testing
+# pytest-timeout>=2.1.0
+# coverage>=7.3.0

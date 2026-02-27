@@ -6,9 +6,7 @@ Himawari-9 satellite sea surface temperature data.
 """
 
 import os
-import time
 import re
-from datetime import datetime
 from pathlib import Path
 from typing import Tuple, Optional, List
 
@@ -19,7 +17,9 @@ import xarray as xr
 import matplotlib
 matplotlib.use('Agg')  # Use non-interactive backend, only generate files without displaying windows
 import matplotlib.pyplot as plt
-from pyproj import Proj
+
+# Add package basedir
+pkg_path = Path(__file__).parent.parent.parent.parent
 
 
 class HimawariDataProcessor:
@@ -30,33 +30,26 @@ class HimawariDataProcessor:
     FILENAME_TIME_RE = re.compile(r"(\d{14})-STAR-L3C_")
     LONG_NAME = "STAR-L3C_GHRSST-SSTsubskin-AHI_H09-ACSPO_V2.90-v02.0-fv01.0"
     
-    def __init__(self, base_dir: str = "data/himawari/sst"):
+    def __init__(self, base_dir: Path=pkg_path / "test_data" / "himawari"):
         """Initialize the processor with unified directory structure."""
-        self.base_dir = Path(base_dir)
-        self.temp_dir = self.base_dir / "temp"
-        self.nc_dir = self.base_dir / "nc"  # renamed from parts_dir
+        self.base_dir = base_dir
+        
+        # Ensure self.base_dir is a Path object
+        self.base_dir = Path(self.base_dir)
+        
+        self.nc_dir = self.base_dir / "nc"  
         self.png_dir = self.base_dir / "png"
-        
-        # Legacy directories for backward compatibility
-        self.legacy_base_dir = Path("himawari_test_data/data/himawari_l3c")
-        self.legacy_temp_dir = self.legacy_base_dir / "temp"
-        self.legacy_parts_dir = self.legacy_base_dir / "parts"
-        self.legacy_png_dir = self.legacy_base_dir / "png"
-        
+
         # Create directories
         self._setup_directories()
         
     def _setup_directories(self):
         """Create necessary directories for both unified and legacy structures."""
         # Create unified directories
-        for directory in [self.base_dir, self.temp_dir, self.nc_dir, self.png_dir]:
-            directory.mkdir(parents=True, exist_ok=True)
-        
-        # Create legacy directories for backward compatibility
-        for directory in [self.legacy_base_dir, self.legacy_temp_dir, self.legacy_parts_dir, self.legacy_png_dir]:
+        for directory in [self.base_dir, self.nc_dir, self.png_dir]:
             directory.mkdir(parents=True, exist_ok=True)
     
-    def ensure_earthdata_login(self, netrc_path: Path = Path(__file__).parent / ".netrc"):
+    def ensure_earthdata_login(self, netrc_path: Path=pkg_path / "cred" / ".netrc"):
         """Login to Earthdata using .netrc file."""
         if not netrc_path.exists():
             raise FileNotFoundError(
@@ -84,7 +77,7 @@ class HimawariDataProcessor:
         latlims: Tuple[float, float],
         delay_hours: int = 4,
         max_results: Optional[int] = None,
-        netrc_path: Path = Path(__file__).parent / ".netrc"
+        netrc_path: Path = pkg_path / "cred" / ".netrc"
     ) -> pd.DataFrame:
         """
         Query available Himawari-9 L3C data.
@@ -171,11 +164,11 @@ class HimawariDataProcessor:
 
         # Account for processing delay
         now_utc = np.datetime64(pd.Timestamp.utcnow().to_pydatetime())
-        safe_latest = now_utc - np.timedelta64(4, 'h')
+        safe_latest = now_utc - np.timedelta64(3, 'h')
         dtrange = dtrange[dtrange <= safe_latest]
 
         print(f"Processing {len(dtrange)} time steps")
-        print(f"Time range: {timelims[0]} to {pd.Timestamp(safe_latest)} UTC")
+        print(f"Time range: {timelims[0]} to {timelims[-1]} UTC")
 
         for dt in dtrange:
             self._process_single_timestamp(
@@ -199,18 +192,19 @@ class HimawariDataProcessor:
         time_str = dt_pd.strftime("%Y%m%d%H%M%S")
         file_name = f"{time_str}-{self.LONG_NAME}.nc"
 
-        file_path = self.temp_dir / file_name
+        file_path = self.nc_dir / file_name
         output_path = self.nc_dir / f"{time_str}.nc"
-
+        
+        # Exit if the file has already been downloaded
         if output_path.exists():
-            print(f"Already processed: {output_path}")
+            # print(f"Already processed: {output_path}")
             return
 
         link = f"https://archive.podaac.earthdata.nasa.gov/podaac-ops-cumulus-protected/{self.COLLECTION_SHORT_NAME}/{file_name}"
 
         if not file_path.exists():
             print(f"Downloading: {file_name}")
-            paths = earthaccess.download(link, str(self.temp_dir))
+            paths = earthaccess.download(link, str(self.nc_dir))
             if not paths:
                 print(f"Download failed or not available yet: {file_name}")
                 return
@@ -285,18 +279,18 @@ class HimawariDataProcessor:
         """Create PNG visualization of SST with lon/lat axes and a value mask."""
         sst = ds[sst_name]
 
-    # Take first frame (if time dimension exists)
+        # Take first frame (if time dimension exists)
         if time_name in sst.dims and sst.sizes.get(time_name, 0) >= 1:
             sst0 = sst.isel({time_name: 0})
         else:
             sst0 = sst
 
-    # Skip if no valid data
+        # Skip if no valid data
         if not np.isfinite(sst0.values).any():
             print(f"SST all-NaN for {time_str}, skipping PNG.")
             return
 
-    # Longitude and latitude names and data
+        # Longitude and latitude names and data
         lon_name = self._pick_coord_name(ds, ["lon", "longitude"])
         lat_name = self._pick_coord_name(ds, ["lat", "latitude"])
         lon = ds[lon_name].values
@@ -306,34 +300,34 @@ class HimawariDataProcessor:
         south, north = float(np.nanmin(lat)), float(np.nanmax(lat))
         extent = [west, east, south, north]
 
-    # Handle temperature range (default use data min/max; if range given, use range and set out-of-range to white)
+        # Handle temperature range (default use data min/max; if range given, use range and set out-of-range to white)
         data = np.array(sst0.values, dtype=float)  # Copy to ndarray
         if temp_range is None:
             vmin = float(np.nanmin(data))
             vmax = float(np.nanmax(data))
         else:
             tmin, tmax = temp_range
-        # If user uses °C, convert to K (assuming data is in K)
+            # If user uses °C, convert to K (assuming data is in K)
             if units.upper() == "C":
                 tmin = tmin + 273.15
                 tmax = tmax + 273.15
             vmin, vmax = float(tmin), float(tmax)
-        # Set out-of-range values to NaN (display as white)
+            # Set out-of-range values to NaN (display as white)
             mask = ~np.isnan(data) & ((data < vmin) | (data > vmax))
             data = data.copy()
             data[mask] = np.nan
 
-    # Colormap: set NaN / under / over all to white as fallback
+        # Colormap: set NaN / under / over all to white as fallback
         cmap = plt.get_cmap("turbo").copy()
         cmap.set_bad("white")
         cmap.set_under("white")
         cmap.set_over("white")
 
-    # Color normalization: no clipping (out-of-range values already set to NaN)
+        # Color normalization: no clipping (out-of-range values already set to NaN)
         norm = matplotlib.colors.Normalize(vmin=vmin, vmax=vmax, clip=False)
 
-    # Plot
-        fig, ax = plt.subplots(figsize=(10, 8))
+        # Plot
+        fig, ax = plt.subplots(figsize=(8, 8))
         im = ax.imshow(
             data,
             origin="lower",
@@ -348,10 +342,13 @@ class HimawariDataProcessor:
         ax.set_xlabel("Longitude (°)")
         ax.set_ylabel("Latitude (°)")
         ax.set_title(f"Himawari-9 SST {time_str}")
+        ax.set_xlim(ds[lon_name].min(), ds[lon_name].max())
+        ax.set_ylim(ds[lat_name].min(), ds[lat_name].max())
+        plt.axis('equal')
         plt.tight_layout()
 
         png_path = self.png_dir / f"{time_str}.png"
-        plt.savefig(png_path, dpi=150, bbox_inches="tight")
+        plt.savefig(png_path, dpi=300, bbox_inches="tight")
         plt.close()
         print(f"Saved PNG: {png_path} (range {vmin:.2f}–{vmax:.2f} K)")
 
@@ -401,210 +398,12 @@ class HimawariDataProcessor:
         return None
 
 
-# Utility functions for coordinate transformations (kept for L2P data if needed)
-def retry_operation(func, retries: int = 20, wait_seconds: int = 60, *args, **kwargs):
-    """Retry a function call with specified retries and wait time."""
-    for attempt in range(1, retries + 1):
-        try:
-            return func(*args, **kwargs)
-        except Exception as e:
-            print(f"[Retry] Attempt {attempt}/{retries} failed: {e}")
-            if attempt < retries:
-                time.sleep(wait_seconds)
-            else:
-                raise RuntimeError(f"Function '{func.__name__}' failed after {retries} retries.")
-
-
-def calculate_latlon_from_geostationary(ds: xr.Dataset) -> Tuple[np.ndarray, ...]:
-    """
-    Calculate latitude and longitude from geostationary projection.
-    Only needed for L2P datasets with geostationary coordinates.
-    """
-    x = ds['ni'].values
-    y = ds['nj'].values
-    
-    geo_var = ds['geostationary']
-    lon_0 = float(geo_var.longitude_of_projection_origin)
-    h = float(geo_var.perspective_point_height)
-    sweep = str(geo_var.sweep_angle_axis)
-    
-    p = Proj(proj='geos', h=h, lon_0=lon_0, sweep=sweep, datum='WGS84')
-    
-    X, Y = np.meshgrid(x * h, y * h)
-    lon, lat = p(X, Y, inverse=True)
-    
-    # Fill space pixels with NaNs
-    lon[np.abs(lon) > 360.0] = np.nan
-    lat[np.abs(lat) > 90.0] = np.nan
-    
-    return X, Y, lat, lon, x, y
-
-
-def create_coordinates_dataset(ds: xr.Dataset) -> xr.Dataset:
-    """Create coordinate dataset for geostationary data."""
-    X, Y, lat, lon, x, y = calculate_latlon_from_geostationary(ds)
-    
-    ds_coords = xr.Dataset(
-        coords={
-            'ni': ('ni', x),
-            'nj': ('nj', y),
-            'lat': (('nj', 'ni'), lat),
-            'lon': (('nj', 'ni'), lon),
-            'X': (('nj', 'ni'), X),
-            'Y': (('nj', 'ni'), Y),
-        }
-    )
-    
-    # Set attributes
-    ds_coords['lat'].attrs.update(long_name='latitude', units='degrees_north')
-    ds_coords['lon'].attrs.update(long_name='longitude', units='degrees_east')
-    ds_coords['X'].attrs.update(long_name='geostationary X', units='m')
-    ds_coords['Y'].attrs.update(long_name='geostationary Y', units='m')
-    
-    return ds_coords
-
-
-def get_crop_indices(lon: np.ndarray, lat: np.ndarray, 
-                    lonlims: Tuple[float, float], 
-                    latlims: Tuple[float, float]) -> Tuple[Tuple[int, int], Tuple[int, int]]:
-    """Get i and j indices for cropping based on lon/lat limits."""
-    def find_nearest(x_grid, y_grid, x_point, y_point):
-        """Find nearest grid point ignoring NaNs."""
-        valid_mask = ~np.isnan(x_grid) & ~np.isnan(y_grid)
-        distances = np.full_like(x_grid, np.inf, dtype=float)
-        distances[valid_mask] = np.hypot(x_grid[valid_mask] - x_point,
-                                        y_grid[valid_mask] - y_point)
-        return np.unravel_index(np.argmin(distances), distances.shape)
-    
-    # Find grid indices for corner points
-    j1, i1 = find_nearest(lon, lat, lonlims[0], latlims[0])
-    j2, i2 = find_nearest(lon, lat, lonlims[1], latlims[0])
-    j3, i3 = find_nearest(lon, lat, lonlims[0], latlims[1])
-    j4, i4 = find_nearest(lon, lat, lonlims[1], latlims[1])
-    
-    ilims = (min(i1, i2, i3, i4), max(i1, i2, i3, i4) + 1)
-    jlims = (min(j1, j2, j3, j4), max(j1, j2, j3, j4) + 1)
-    
-    return ilims, jlims
-
-
-def merge_parts_to_single_nc(parts_dir: Path, merged_path: Path):
-    """
-    Merge all cropped nc files in the parts/ directory into a single file
-    
-    Args:
-        parts_dir: Directory containing split nc files
-        merged_path: Path to save the merged file
-    """
-    import pandas as pd
-    
-    # Find all cropped nc files
-    nc_files = sorted(parts_dir.glob("*.nc"))
-    if not nc_files:
-        print(f"[WARN] No files found in {parts_dir}")
-        return
-    
-    print(f"Found {len(nc_files)} files, merging...")
-
-    # Read all nc files
-    datasets = []
-    for f in nc_files:
-        try:
-            ds = xr.open_dataset(f)
-            # Ensure time is datetime64
-            if 'time' in ds:
-                ds['time'] = pd.to_datetime(ds['time'].values)
-            datasets.append(ds)
-        except Exception as e:
-            print(f"Warning: Could not open {f}: {e}")
-            continue
-    
-    if not datasets:
-        print("[ERROR] No valid datasets found to merge")
-        return
-    
-    # Concatenate along time dimension
-    try:
-        merged_ds = xr.concat(datasets, dim="time")
-        
-    # Save as a new large nc file
-        merged_ds.to_netcdf(merged_path)
-        print(f"[OK] Merged dataset saved to {merged_path}")
-        
-    # Close all small files, free memory
-        for ds in datasets:
-            ds.close()
-        merged_ds.close()
-        
-    except Exception as e:
-        print(f"[ERROR] Failed to merge datasets: {e}")
-    # Clean up opened datasets
-        for ds in datasets:
-            try:
-                ds.close()
-            except:
-                pass
-
-
-def analyze_merged_dataset(merged_path: Path):
-    """
-    Analyze the merged dataset
-    
-    Args:
-        merged_path: Path to the merged dataset
-    """
-    if not merged_path.exists():
-        print(f"[ERROR] Merged file not found: {merged_path}")
-        return
-    
-    try:
-    # Read the merged file
-        ds = xr.open_dataset(merged_path)
-        
-        print("=== Dataset Analysis ===")
-        print(f"Data variables: {list(ds.data_vars.keys())}")
-        
-    # Get sea surface temperature data
-        if "sea_surface_temperature" in ds.data_vars:
-            sst = ds["sea_surface_temperature"]
-            print(f"SST shape: {sst.shape}")
-            print(f"SST dimensions: {sst.dims}")
-            print(f"SST data type: {sst.dtype}")
-            
-            # Statistics
-            valid_data = sst.values[~np.isnan(sst.values)]
-            if len(valid_data) > 0:
-                print(f"Valid data points: {len(valid_data)}")
-                print(f"SST range: {np.min(valid_data):.2f} - {np.max(valid_data):.2f} K")
-                print(f"SST mean: {np.mean(valid_data):.2f} K")
-            else:
-                print("No valid SST data found")
-        
-    # Get time coordinate
-        if "time" in ds.coords:
-            print(f"Time coordinate: {ds['time'].values}")
-            print(f"Time range: {ds['time'].values[0]} to {ds['time'].values[-1]}")
-        
-    # Get spatial coordinates
-        if "lon" in ds.coords and "lat" in ds.coords:
-            lon_range = (float(ds['lon'].min()), float(ds['lon'].max()))
-            lat_range = (float(ds['lat'].min()), float(ds['lat'].max()))
-            print(f"Longitude range: {lon_range[0]:.2f} - {lon_range[1]:.2f}")
-            print(f"Latitude range: {lat_range[0]:.2f} - {lat_range[1]:.2f}")
-        
-        ds.close()
-        
-    except Exception as e:
-        print(f"[ERROR] Failed to analyze dataset: {e}")
-
-
 # Add a convenient utility class to handle the complete workflow
 class HimawariWorkflow:
     """Complete Himawari data processing workflow"""
     
-    def __init__(self, base_dir: str = "data/himawari/sst"):
-        self.processor = HimawariDataProcessor(base_dir)
-        self.merged_path = self.processor.base_dir / "merged_sst.nc"
+    def __init__(self, base_dir: str = str(pkg_path) + "/test_data" + "/himawari"):
+        self.processor = HimawariDataProcessor(Path(base_dir))
     
     def run_complete_workflow(
         self,
@@ -612,7 +411,7 @@ class HimawariWorkflow:
         lonlims: Tuple[float, float],
         latlims: Tuple[float, float],
         tstep: int = 3600,
-        netrc_path: Path = Path(__file__).parent / ".netrc"
+        netrc_path: Path = pkg_path / "cred" / ".netrc"
     ):
         """
         Run the complete data processing workflow: query -> download -> process -> merge -> analyze
@@ -627,7 +426,7 @@ class HimawariWorkflow:
         print("=== Himawari Data Processing Workflow ===")
         
         # Step 1: Query available data
-        print("\n1. Querying available data...")
+        print("\nQuerying available data...")
         try:
             manifest = self.processor.query_data_manifest(
                 timelims=timelims,
@@ -647,7 +446,7 @@ class HimawariWorkflow:
             return
         
         # Step 2: Process time series data
-        print("\n2. Processing time series data...")
+        print("\nProcessing time series data...")
         try:
             self.processor.process_time_series(
                 timelims=timelims,
@@ -660,425 +459,368 @@ class HimawariWorkflow:
             print(f"Failed to process time series: {e}")
             return
         
-        # Step 3: Merge all processed files
-        print("\n3. Merging processed files...")
-        try:
-            merge_parts_to_single_nc(self.processor.nc_dir, self.merged_path)
-        except Exception as e:
-            print(f"Failed to merge files: {e}")
-            return
-        
-        # Step 4: Analyze merged dataset
-        print("\n4. Analyzing merged dataset...")
-        try:
-            analyze_merged_dataset(self.merged_path)
-        except Exception as e:
-            print(f"Failed to analyze dataset: {e}")
-        
         print(f"\n=== Workflow Complete ===")
         print(f"Results saved to: {self.processor.base_dir}")
         print(f"- Processed files: {self.processor.nc_dir}")
         print(f"- Visualizations: {self.processor.png_dir}")
-        print(f"- Merged dataset: {self.merged_path}")
     
-    def quick_analysis(self):
-        """Quickly analyze the existing merged dataset"""
-        if self.merged_path.exists():
-            analyze_merged_dataset(self.merged_path)
-        else:
-            print(f"Merged dataset not found at: {self.merged_path}")
-            print("Run the complete workflow first.")
 
 
-
-# Convenience function
-def run_himawari_workflow_example():
-    """Run an example Himawari data processing workflow"""
+# class HimawariFileMonitor:
+#     """Himawari file integrity monitoring and repair service"""
     
-    # Configuration parameters
-    timelims = ("2025-10-01T00:00:00", datetime.utcnow().isoformat())
-    lonlims = (111, 114)  # Western Australia region
-    latlims = (-25, -20)
-    tstep = 3600  # 1 hour interval
-    
-    # Create workflow instance
-    workflow = HimawariWorkflow()
-    
-    # Run complete workflow
-    workflow.run_complete_workflow(
-        timelims=timelims,
-        lonlims=lonlims,
-        latlims=latlims,
-        tstep=tstep
-    )
-
-
-class HimawariFileMonitor:
-    """Himawari file integrity monitoring and repair service"""
-    
-    def __init__(self, processor: HimawariDataProcessor):
-        """
-        Initialize file monitor
+#     def __init__(self, processor: HimawariDataProcessor):
+#         """
+#         Initialize file monitor
         
-        Args:
-            processor: HimawariDataProcessor instance
-        """
-        self.processor = processor
-        self.base_dir = processor.base_dir
-        self.nc_dir = processor.nc_dir  # Updated from parts_dir
-        self.parts_dir = processor.nc_dir  # For backward compatibility
-        self.png_dir = processor.png_dir
+#         Args:
+#             processor: HimawariDataProcessor instance
+#         """
+#         self.processor = processor
+#         self.base_dir = processor.base_dir
+#         self.nc_dir = processor.nc_dir  # Updated from parts_dir
+#         self.parts_dir = processor.nc_dir  # For backward compatibility
+#         self.png_dir = processor.png_dir
         
-    def check_file_completeness(
-        self,
-        timelims: Tuple[str, str],
-        tstep: int = 3600,
-        check_nc: bool = True,
-        check_png: bool = True
-    ) -> dict:
-        """
-        Check file integrity within the specified time range
+#     def check_file_completeness(
+#         self,
+#         timelims: Tuple[str, str],
+#         tstep: int = 3600,
+#         check_nc: bool = True,
+#         check_png: bool = True
+#     ) -> dict:
+#         """
+#         Check file integrity within the specified time range
         
-        Args:
-            timelims: Time range (start, end)
-            tstep: Time step (seconds)
-            check_nc: Whether to check nc files
-            check_png: Whether to check png files
+#         Args:
+#             timelims: Time range (start, end)
+#             tstep: Time step (seconds)
+#             check_nc: Whether to check nc files
+#             check_png: Whether to check png files
         
-        Returns:
-            Dictionary containing check results
-        """
-        print("=== Checking File Completeness ===")
+#         Returns:
+#             Dictionary containing check results
+#         """
+#         print("=== Checking File Completeness ===")
         
-    # Generate expected time series
-        dtlims = (np.datetime64(timelims[0]), np.datetime64(timelims[1]))
-        dtrange = np.arange(dtlims[0], dtlims[1], np.timedelta64(tstep, 's'))
+#         # Generate expected time series
+#         dtlims = (np.datetime64(timelims[0]), np.datetime64(timelims[1]))
+#         dtrange = np.arange(dtlims[0], dtlims[1], np.timedelta64(tstep, 's'))
         
-    # Consider processing delay
-        now_utc = np.datetime64(pd.Timestamp.utcnow().to_pydatetime())
-        safe_latest = now_utc - np.timedelta64(4, 'h')
-        dtrange = dtrange[dtrange <= safe_latest]
+#         # Consider processing delay
+#         now_utc = np.datetime64(pd.Timestamp.utcnow().to_pydatetime())
+#         safe_latest = now_utc - np.timedelta64(4, 'h')
+#         dtrange = dtrange[dtrange <= safe_latest]
         
-        expected_times = [pd.Timestamp(dt).strftime("%Y%m%d%H%M%S") for dt in dtrange]
+#         expected_times = [pd.Timestamp(dt).strftime("%Y%m%d%H%M%S") for dt in dtrange]
         
-        print(f"Expected time steps: {len(expected_times)}")
-        print(f"Time range: {timelims[0]} to {pd.Timestamp(safe_latest)} UTC")
+#         print(f"Expected time steps: {len(expected_times)}")
+#         print(f"Time range: {timelims[0]} to {pd.Timestamp(safe_latest)} UTC")
         
-        results = {
-            'expected_files': len(expected_times),
-            'expected_times': expected_times,
-            'nc_files': {
-                'existing': [],
-                'missing': [],
-                'corrupted': []
-            },
-            'png_files': {
-                'existing': [],
-                'missing': []
-            },
-            'summary': {}
-        }
+#         results = {
+#             'expected_files': len(expected_times),
+#             'expected_times': expected_times,
+#             'nc_files': {
+#                 'existing': [],
+#                 'missing': [],
+#                 'corrupted': []
+#             },
+#             'png_files': {
+#                 'existing': [],
+#                 'missing': []
+#             },
+#             'summary': {}
+#         }
         
-    # Check nc files
-        if check_nc:
-            print("\nChecking NC files...")
-            results['nc_files'] = self._check_nc_files(expected_times)
+#         # Check nc files
+#         if check_nc:
+#             print("\nChecking NC files...")
+#             results['nc_files'] = self._check_nc_files(expected_times)
             
-    # Check png files
-        if check_png:
-            print("\nChecking PNG files...")
-            results['png_files'] = self._check_png_files(expected_times)
+#         # Check png files
+#         if check_png:
+#             print("\nChecking PNG files...")
+#             results['png_files'] = self._check_png_files(expected_times)
             
-    # Generate summary
-        results['summary'] = self._generate_summary(results)
+#         # Generate summary
+#         results['summary'] = self._generate_summary(results)
         
-        return results
+#         return results
     
-    def _check_nc_files(self, expected_times: List[str]) -> dict:
-        """Check existence and integrity of nc files"""
-        nc_results = {
-            'existing': [],
-            'missing': [],
-            'corrupted': []
-        }
+#     def _check_nc_files(self, expected_times: List[str]) -> dict:
+#         """Check existence and integrity of nc files"""
+#         nc_results = {
+#             'existing': [],
+#             'missing': [],
+#             'corrupted': []
+#         }
         
-        for time_str in expected_times:
-            # Check unified directory first, then legacy
-            nc_path = self.nc_dir / f"{time_str}.nc"
-            legacy_nc_path = self.processor.legacy_parts_dir / f"{time_str}.nc"
+#         for time_str in expected_times:
+#             # Check unified directory first, then legacy
+#             nc_path = self.nc_dir / f"{time_str}.nc"
             
-            # Try unified first, then legacy
-            file_found = False
-            for path, location in [(nc_path, "unified"), (legacy_nc_path, "legacy")]:
-                if path.exists():
-                    # Check if file can be opened normally
-                    try:
-                        with xr.open_dataset(path) as ds:
-                            # Basic integrity check
-                            if 'sea_surface_temperature' in ds.data_vars:
-                                nc_results['existing'].append(time_str)
-                                print(f"✓ {time_str}.nc - OK ({location})")
-                                file_found = True
-                                break
-                            else:
-                                nc_results['corrupted'].append(time_str)
-                                print(f"⚠ {time_str}.nc - Missing SST variable ({location})")
-                                file_found = True
-                                break
-                    except Exception as e:
-                        nc_results['corrupted'].append(time_str)
-                        print(f"✗ {time_str}.nc - Corrupted ({location}): {e}")
-                        file_found = True
-                        break
+#             # Try unified first, then legacy
+#             file_found = False
+#             for path, location in [(nc_path, "unified")]:
+#                 if path.exists():
+#                     # Check if file can be opened normally
+#                     try:
+#                         with xr.open_dataset(path) as ds:
+#                             # Basic integrity check
+#                             if 'sea_surface_temperature' in ds.data_vars:
+#                                 nc_results['existing'].append(time_str)
+#                                 print(f"✓ {time_str}.nc - OK ({location})")
+#                                 file_found = True
+#                                 break
+#                             else:
+#                                 nc_results['corrupted'].append(time_str)
+#                                 print(f"⚠ {time_str}.nc - Missing SST variable ({location})")
+#                                 file_found = True
+#                                 break
+#                     except Exception as e:
+#                         nc_results['corrupted'].append(time_str)
+#                         print(f"✗ {time_str}.nc - Corrupted ({location}): {e}")
+#                         file_found = True
+#                         break
             
-            if not file_found:
-                nc_results['missing'].append(time_str)
-                print(f"✗ {time_str}.nc - Missing")
+#             if not file_found:
+#                 nc_results['missing'].append(time_str)
+#                 print(f"✗ {time_str}.nc - Missing")
                 
-        return nc_results
+#         return nc_results
     
-    def _check_png_files(self, expected_times: List[str]) -> dict:
-        """Check existence of png files"""
-        png_results = {
-            'existing': [],
-            'missing': []
-        }
+#     def _check_png_files(self, expected_times: List[str]) -> dict:
+#         """Check existence of png files"""
+#         png_results = {
+#             'existing': [],
+#             'missing': []
+#         }
         
-        for time_str in expected_times:
-            # Check unified directory first, then legacy
-            png_path = self.png_dir / f"{time_str}.png"
-            legacy_png_path = self.processor.legacy_png_dir / f"{time_str}.png"
+#         for time_str in expected_times:
+#             # Check unified directory first, then legacy
+#             png_path = self.png_dir / f"{time_str}.png"
             
-            # Try unified first, then legacy
-            file_found = False
-            for path, location in [(png_path, "unified"), (legacy_png_path, "legacy")]:
-                if path.exists() and path.stat().st_size > 0:
-                    png_results['existing'].append(time_str)
-                    print(f"✓ {time_str}.png - OK ({location})")
-                    file_found = True
-                    break
+#             # Try unified first, then legacy
+#             file_found = False
+#             for path, location in [(png_path, "unified")]:
+#                 if path.exists() and path.stat().st_size > 0:
+#                     png_results['existing'].append(time_str)
+#                     print(f"✓ {time_str}.png - OK ({location})")
+#                     file_found = True
+#                     break
             
-            if not file_found:
-                png_results['missing'].append(time_str)
-                print(f"✗ {time_str}.png - Missing")
+#             if not file_found:
+#                 png_results['missing'].append(time_str)
+#                 print(f"✗ {time_str}.png - Missing")
                 
-        return png_results
+#         return png_results
     
-    def _generate_summary(self, results: dict) -> dict:
-        """Generate summary of check results"""
-        total_expected = results['expected_files']
+#     def _generate_summary(self, results: dict) -> dict:
+#         """Generate summary of check results"""
+#         total_expected = results['expected_files']
         
-    # NC file statistics
-        nc_existing = len(results['nc_files']['existing'])
-        nc_missing = len(results['nc_files']['missing'])
-        nc_corrupted = len(results['nc_files']['corrupted'])
+#     # NC file statistics
+#         nc_existing = len(results['nc_files']['existing'])
+#         nc_missing = len(results['nc_files']['missing'])
+#         nc_corrupted = len(results['nc_files']['corrupted'])
         
-    # PNG file statistics
-        png_existing = len(results['png_files']['existing'])
-        png_missing = len(results['png_files']['missing'])
+#     # PNG file statistics
+#         png_existing = len(results['png_files']['existing'])
+#         png_missing = len(results['png_files']['missing'])
         
-        summary = {
-            'total_expected': total_expected,
-            'nc_files': {
-                'existing': nc_existing,
-                'missing': nc_missing,
-                'corrupted': nc_corrupted,
-                'completion_rate': f"{(nc_existing/total_expected)*100:.1f}%" if total_expected > 0 else "0%"
-            },
-            'png_files': {
-                'existing': png_existing,
-                'missing': png_missing,
-                'completion_rate': f"{(png_existing/total_expected)*100:.1f}%" if total_expected > 0 else "0%"
-            }
-        }
+#         summary = {
+#             'total_expected': total_expected,
+#             'nc_files': {
+#                 'existing': nc_existing,
+#                 'missing': nc_missing,
+#                 'corrupted': nc_corrupted,
+#                 'completion_rate': f"{(nc_existing/total_expected)*100:.1f}%" if total_expected > 0 else "0%"
+#             },
+#             'png_files': {
+#                 'existing': png_existing,
+#                 'missing': png_missing,
+#                 'completion_rate': f"{(png_existing/total_expected)*100:.1f}%" if total_expected > 0 else "0%"
+#             }
+#         }
         
-        print(f"\n=== File Completeness Summary ===")
-        print(f"Total expected files: {total_expected}")
-        print(f"NC files - Existing: {nc_existing}, Missing: {nc_missing}, Corrupted: {nc_corrupted}")
-        print(f"NC completion rate: {summary['nc_files']['completion_rate']}")
-        print(f"PNG files - Existing: {png_existing}, Missing: {png_missing}")
-        print(f"PNG completion rate: {summary['png_files']['completion_rate']}")
+#         print(f"\n=== File Completeness Summary ===")
+#         print(f"Total expected files: {total_expected}")
+#         print(f"NC files - Existing: {nc_existing}, Missing: {nc_missing}, Corrupted: {nc_corrupted}")
+#         print(f"NC completion rate: {summary['nc_files']['completion_rate']}")
+#         print(f"PNG files - Existing: {png_existing}, Missing: {png_missing}")
+#         print(f"PNG completion rate: {summary['png_files']['completion_rate']}")
         
-        return summary
+#         return summary
     
-    def repair_missing_files(
-        self,
-        check_results: dict,
-        lonlims: Tuple[float, float],
-        latlims: Tuple[float, float],
-        netrc_path: Path = Path(__file__).parent / ".netrc",
-        repair_nc: bool = True,
-        repair_png: bool = True,
-        max_concurrent: int = 3
-    ):
-        """
-        Repair missing and corrupted files
+#     def repair_missing_files(
+#         self,
+#         check_results: dict,
+#         lonlims: Tuple[float, float],
+#         latlims: Tuple[float, float],
+#         netrc_path: Path = Path(__file__).parent / ".netrc",
+#         repair_nc: bool = True,
+#         repair_png: bool = True,
+#         max_concurrent: int = 3
+#     ):
+#         """
+#         Repair missing and corrupted files
         
-        Args:
-            check_results: Result from check_file_completeness
-            lonlims: Longitude range
-            latlims: Latitude range
-            netrc_path: Path to .netrc file
-            repair_nc: Whether to repair nc files
-            repair_png: Whether to repair png files
-            max_concurrent: Maximum concurrent downloads
-        """
-        print("\n=== Starting File Repair ===")
+#         Args:
+#             check_results: Result from check_file_completeness
+#             lonlims: Longitude range
+#             latlims: Latitude range
+#             netrc_path: Path to .netrc file
+#             repair_nc: Whether to repair nc files
+#             repair_png: Whether to repair png files
+#             max_concurrent: Maximum concurrent downloads
+#         """
+#         print("\n=== Starting File Repair ===")
         
-        nc_repaired_count = 0
-        nc_failed_count = 0
-        png_repaired_count = 0
-        png_failed_count = 0
+#         nc_repaired_count = 0
+#         nc_failed_count = 0
+#         png_repaired_count = 0
+#         png_failed_count = 0
         
-    # Step 1: Repair NC files (download and process)
-        if repair_nc:
-            nc_files_to_repair = []
-            nc_files_to_repair.extend(check_results['nc_files']['missing'])
-            nc_files_to_repair.extend(check_results['nc_files']['corrupted'])
-            nc_files_to_repair = sorted(list(set(nc_files_to_repair)))
+#     # Step 1: Repair NC files (download and process)
+#         if repair_nc:
+#             nc_files_to_repair = []
+#             nc_files_to_repair.extend(check_results['nc_files']['missing'])
+#             nc_files_to_repair.extend(check_results['nc_files']['corrupted'])
+#             nc_files_to_repair = sorted(list(set(nc_files_to_repair)))
             
-            if nc_files_to_repair:
-                print(f"\n--- Step 1: Repairing {len(nc_files_to_repair)} NC files ---")
+#             if nc_files_to_repair:
+#                 print(f"\n--- Step 1: Repairing {len(nc_files_to_repair)} NC files ---")
                 
-                # Ensure login
-                self.processor.ensure_earthdata_login(netrc_path)
+#                 # Ensure login
+#                 self.processor.ensure_earthdata_login(netrc_path)
                 
-                for i, time_str in enumerate(nc_files_to_repair, 1):
-                    print(f"[{i}/{len(nc_files_to_repair)}] Downloading and processing {time_str}...")
+#                 for i, time_str in enumerate(nc_files_to_repair, 1):
+#                     print(f"[{i}/{len(nc_files_to_repair)}] Downloading and processing {time_str}...")
                     
-                    try:
-                        # Convert time string to datetime64
-                        dt = np.datetime64(pd.to_datetime(time_str, format="%Y%m%d%H%M%S"))
+#                     try:
+#                         # Convert time string to datetime64
+#                         dt = np.datetime64(pd.to_datetime(time_str, format="%Y%m%d%H%M%S"))
                         
-                        # Process single time step (will download NC and generate PNG)
-                        self.processor._process_single_timestamp(dt, lonlims, latlims)
+#                         # Process single time step (will download NC and generate PNG)
+#                         self.processor._process_single_timestamp(dt, lonlims, latlims)
                         
-                        nc_repaired_count += 1
-                        print(f"✓ Successfully repaired NC and PNG for {time_str}")
+#                         nc_repaired_count += 1
+#                         print(f"✓ Successfully repaired NC and PNG for {time_str}")
                         
-                    except Exception as e:
-                        nc_failed_count += 1
-                        print(f"✗ Failed to repair {time_str}: {e}")
-            else:
-                print("--- Step 1: No NC files need repair ---")
+#                     except Exception as e:
+#                         nc_failed_count += 1
+#                         print(f"✗ Failed to repair {time_str}: {e}")
+#             else:
+#                 print("--- Step 1: No NC files need repair ---")
         
-    # Step 2: Repair PNG files (based on existing NC files)
-        if repair_png:
-            # Find time points missing PNG but with existing NC file
-            png_only_repairs = [t for t in check_results['png_files']['missing'] 
-                             if t in check_results['nc_files']['existing']]
+#     # Step 2: Repair PNG files (based on existing NC files)
+#         if repair_png:
+#             # Find time points missing PNG but with existing NC file
+#             png_only_repairs = [t for t in check_results['png_files']['missing'] 
+#                              if t in check_results['nc_files']['existing']]
             
-            if png_only_repairs:
-                print(f"\n--- Step 2: Regenerating {len(png_only_repairs)} PNG files from existing NC files ---")
+#             if png_only_repairs:
+#                 print(f"\n--- Step 2: Regenerating {len(png_only_repairs)} PNG files from existing NC files ---")
                 
-                for i, time_str in enumerate(png_only_repairs, 1):
-                    print(f"[{i}/{len(png_only_repairs)}] Regenerating PNG for {time_str}...")
-                    try:
-                        self._regenerate_png(time_str)
-                        png_repaired_count += 1
-                        print(f"✓ Regenerated PNG for {time_str}")
-                    except Exception as e:
-                        png_failed_count += 1
-                        print(f"✗ Failed to regenerate PNG for {time_str}: {e}")
-            else:
-                print("--- Step 2: No PNG-only repairs needed ---")
+#                 for i, time_str in enumerate(png_only_repairs, 1):
+#                     print(f"[{i}/{len(png_only_repairs)}] Regenerating PNG for {time_str}...")
+#                     try:
+#                         self._regenerate_png(time_str)
+#                         png_repaired_count += 1
+#                         print(f"✓ Regenerated PNG for {time_str}")
+#                     except Exception as e:
+#                         png_failed_count += 1
+#                         print(f"✗ Failed to regenerate PNG for {time_str}: {e}")
+#             else:
+#                 print("--- Step 2: No PNG-only repairs needed ---")
                 
-        print(f"\n=== Repair Complete ===")
-        print(f"NC files - Successfully repaired: {nc_repaired_count}, Failed: {nc_failed_count}")
-        print(f"PNG files - Successfully regenerated: {png_repaired_count}, Failed: {png_failed_count}")
-        print(f"Total operations: {nc_repaired_count + png_repaired_count} successful, {nc_failed_count + png_failed_count} failed")
+#         print(f"\n=== Repair Complete ===")
+#         print(f"NC files - Successfully repaired: {nc_repaired_count}, Failed: {nc_failed_count}")
+#         print(f"PNG files - Successfully regenerated: {png_repaired_count}, Failed: {png_failed_count}")
+#         print(f"Total operations: {nc_repaired_count + png_repaired_count} successful, {nc_failed_count + png_failed_count} failed")
     
-    def _regenerate_png(self, time_str: str):
-        """Regenerate PNG from existing nc file"""
-        nc_path = self.nc_dir / f"{time_str}.nc"
-        if not nc_path.exists():
-            raise FileNotFoundError(f"NC file not found: {nc_path}")
-        # Read nc file and generate visualization
-        with xr.open_dataset(nc_path) as ds:
-            sst_name = self.processor._find_sst_variable(ds)
-            time_name = self.processor._pick_coord_name(ds, ["time", "t"])
-            self.processor._create_visualization(ds, sst_name, time_name, time_str)
+#     def _regenerate_png(self, time_str: str):
+#         """Regenerate PNG from existing nc file"""
+#         nc_path = self.nc_dir / f"{time_str}.nc"
+#         if not nc_path.exists():
+#             raise FileNotFoundError(f"NC file not found: {nc_path}")
+#         # Read nc file and generate visualization
+#         with xr.open_dataset(nc_path) as ds:
+#             sst_name = self.processor._find_sst_variable(ds)
+#             time_name = self.processor._pick_coord_name(ds, ["time", "t"])
+#             self.processor._create_visualization(ds, sst_name, time_name, time_str)
     
-    def auto_repair_service(
-        self,
-        timelims: Tuple[str, str],
-        lonlims: Tuple[float, float],
-        latlims: Tuple[float, float],
-        tstep: int = 3600,
-        netrc_path: Path = Path(__file__).parent / ".netrc",
-        check_interval: int = 3600  # Check interval (seconds)
-    ):
-        """
-        Auto repair service - periodically check and repair missing files
+#     def auto_repair_service(
+#         self,
+#         timelims: Tuple[str, str],
+#         lonlims: Tuple[float, float],
+#         latlims: Tuple[float, float],
+#         tstep: int = 3600,
+#         netrc_path: Path = Path(__file__).parent / ".netrc",
+#         check_interval: int = 3600  # Check interval (seconds)
+#     ):
+#         """
+#         Auto repair service - periodically check and repair missing files
         
-        Args:
-            timelims: Time range
-            lonlims: Longitude range
-            latlims: Latitude range
-            tstep: Time step
-            netrc_path: Path to .netrc file
-            check_interval: Check interval (seconds)
-        """
-        print("=== Starting Auto Repair Service ===")
-        print(f"Check interval: {check_interval} seconds")
-        print("Press Ctrl+C to stop the service")
+#         Args:
+#             timelims: Time range
+#             lonlims: Longitude range
+#             latlims: Latitude range
+#             tstep: Time step
+#             netrc_path: Path to .netrc file
+#             check_interval: Check interval (seconds)
+#         """
+#         print("=== Starting Auto Repair Service ===")
+#         print(f"Check interval: {check_interval} seconds")
+#         print("Press Ctrl+C to stop the service")
         
-        try:
-            while True:
-                print(f"\n[{pd.Timestamp.now()}] Running file completeness check...")
+#         try:
+#             while True:
+#                 print(f"\n[{pd.Timestamp.now()}] Running file completeness check...")
                 
-                # Check file integrity
-                results = self.check_file_completeness(
-                    timelims=timelims,
-                    tstep=tstep
-                )
+#                 # Check file integrity
+#                 results = self.check_file_completeness(
+#                     timelims=timelims,
+#                     tstep=tstep
+#                 )
                 
-                # If there are missing files, repair them
-                missing_nc = len(results['nc_files']['missing'])
-                corrupted_nc = len(results['nc_files']['corrupted'])
-                missing_png = len(results['png_files']['missing'])
+#                 # If there are missing files, repair them
+#                 missing_nc = len(results['nc_files']['missing'])
+#                 corrupted_nc = len(results['nc_files']['corrupted'])
+#                 missing_png = len(results['png_files']['missing'])
                 
-                if missing_nc > 0 or corrupted_nc > 0 or missing_png > 0:
-                    print(f"Found issues: {missing_nc} missing NC, {corrupted_nc} corrupted NC, {missing_png} missing PNG")
+#                 if missing_nc > 0 or corrupted_nc > 0 or missing_png > 0:
+#                     print(f"Found issues: {missing_nc} missing NC, {corrupted_nc} corrupted NC, {missing_png} missing PNG")
                     
-                    self.repair_missing_files(
-                        check_results=results,
-                        lonlims=lonlims,
-                        latlims=latlims,
-                        netrc_path=netrc_path
-                    )
-                else:
-                    print("All files are complete and healthy.")
+#                     self.repair_missing_files(
+#                         check_results=results,
+#                         lonlims=lonlims,
+#                         latlims=latlims,
+#                         netrc_path=netrc_path
+#                     )
+#                 else:
+#                     print("All files are complete and healthy.")
                 
-                print(f"Next check in {check_interval} seconds...")
-                time.sleep(check_interval)
+#                 print(f"Next check in {check_interval} seconds...")
+#                 time.sleep(check_interval)
                 
-        except KeyboardInterrupt:
-            print("\n=== Auto Repair Service Stopped ===")
+#         except KeyboardInterrupt:
+#             print("\n=== Auto Repair Service Stopped ===")
 
 
-def create_file_monitor(base_dir
-                        : str = "data/himawari/sst") -> HimawariFileMonitor:
-    """
-    Convenience function to create a file monitor
+# def create_file_monitor(base_dir
+#                         : str = "data/himawari/sst") -> HimawariFileMonitor:
+#     """
+#     Convenience function to create a file monitor
     
-    Args:
-        base_dir: Data directory
+#     Args:
+#         base_dir: Data directory
     
-    Returns:
-        HimawariFileMonitor instance
-    """
-    processor = HimawariDataProcessor(base_dir)
-    return HimawariFileMonitor(processor)
+#     Returns:
+#         HimawariFileMonitor instance
+#     """
+#     processor = HimawariDataProcessor(base_dir)
+#     return HimawariFileMonitor(processor)
 
-processor = HimawariDataProcessor()
+# processor = HimawariDataProcessor()
 
-# Commented out auto-execution to prevent automatic data download on API startup
-# processor.process_time_series(
-#     timelims=("2025-10-01T00:00:00", datetime.utcnow().isoformat()),
-#     lonlims=(111, 114),
-#     latlims=(-25, -20),
-#     tstep=3600,
-#     temp_range=(28.0, 31.0),  # ← Adjust here
-#     units="C"                 # "C" or "K"
-# )
