@@ -1,9 +1,14 @@
 from datetime import datetime, timezone
+from pathlib import Path
 
 from mnf26_proj import get_proj, get_s3_layers, get_swot_info
 from pysatview.himawari.himawari_processor import HimawariWorkflow
 from pysatview.sentinel3.sentinel3_processor import Sentinel3Workflow
 from pysatview.swot.swot_processor import SwotWorkflow
+
+
+pkg_path = Path(__file__).parent.parent.parent
+
 
 mnf_outer, mnf_inner = get_proj()
 
@@ -16,7 +21,7 @@ def init_himawari_workflow():
     latlims = (mnf_outer['south_lat'], mnf_outer['north_lat'])
     tstep = 3600  # 1 hour interval
     
-    workflow = HimawariWorkflow()
+    workflow = HimawariWorkflow(base_dir=None)
     
     workflow.run_complete_workflow(
         timelims=timelims,
