@@ -27,6 +27,8 @@ import numpy as np
 import pandas as pd
 import xarray as xr
 import ssl
+import cartopy
+import cartopy.crs as ccrs
 
 from owslib.wcs import WebCoverageService
 from owslib.util import Authentication
@@ -300,16 +302,16 @@ class Sentinel3DataProcessor:
     def process_and_visualize(
         self,
         downloaded_files: Dict[str, Path],
-        create_individual_plots: bool = True,
-        create_combined_plot: bool = True
-    ) -> Dict[str, List[Path]]:
+        bbox_limits: Tuple[List, List] = None, 
+        strap: Optional[str] = '',       
+) -> Dict[str, List[Path]]:
         """
         Process downloaded NetCDF files and create visualizations.
         
         Args:
             downloaded_files: Dictionary of layer_key -> file_path
-            create_individual_plots: Create individual time series plots
-            create_combined_plot: Create combined overview plot
+            bbox_limits: Bounding box limits for subsetting
+            strap: Strap identifier for visualization
             
         Returns:
             Dictionary mapping layer_key to list of generated PNG files
@@ -322,7 +324,7 @@ class Sentinel3DataProcessor:
             for nc_file in downloaded_files[layer_key]:
                 try:
                     png_file = self._process_single_file(
-                        layer_key, nc_file, create_individual_plots
+                        layer_key, nc_file, bbox_limits, strap
                     )
                     visualization_files[layer_key].append(png_file)
                     
@@ -336,7 +338,8 @@ class Sentinel3DataProcessor:
         self,
         layer_key: str,
         nc_file: Path,
-        create_individual_plots: bool = True
+        bbox_limits: Tuple[List, List] = None,
+        strap: Optional[str] = ''
     ) -> List[Path]:
         """Process a single NetCDF file and create visualizations."""
         try:
@@ -352,19 +355,16 @@ class Sentinel3DataProcessor:
             # Get satellite and data type for file naming
             satellite, data_type = self._parse_layer_key(layer_key)
             
-            # png_files = []
-            
-            # if 'time' in ds.dims and ds.sizes['time'] > 1:
-            #     # Multiple time steps - create individual plots
-            #     if create_individual_plots:
-            #         png_files.extend(self._create_time_series_plots(
-            #             ds, data_var, satellite, data_type
-            #         ))
-            # else:
+            if bbox_limits:
+                try:
+                    ds = ds.sel(lon=slice(bbox_limits[0][0], bbox_limits[0][1]), lat=slice(bbox_limits[1][0], bbox_limits[1][1]))
+                except Exception as e:
+                    print(f"Warning, abandoning small plot: Could not subset {nc_file} by bbox limits: {e}")
+                    return None                    
             
             # Single time step - create one plot
             png_file = self._create_single_plot(
-                ds, data_var, satellite, data_type
+                ds, data_var, satellite, data_type, strap
             )
             ds.close()
             return png_file
@@ -399,7 +399,8 @@ class Sentinel3DataProcessor:
         ds: xr.Dataset,
         data_var: str,
         satellite: str,
-        data_type: str
+        data_type: str,
+        strap: Optional[str] = ''
     ) -> Path:
         """Create a single plot for data with one time step."""
 
@@ -407,7 +408,7 @@ class Sentinel3DataProcessor:
         time_val = np.squeeze(ds['time'].values)
         time_str = pd.to_datetime(time_val).strftime("%Y-%m-%d %H:%M")
         file_time_str = pd.to_datetime(time_val).strftime("%Y%m%d_%H%M%S")
-        png_path = self.get_png_path(satellite, data_type, f"{file_time_str}.png")
+        png_path = self.get_png_path(satellite, data_type, f"{file_time_str}_{data_type}{strap}.png")
         
         # Skip if figure already saved
         if not png_path.exists():
@@ -422,7 +423,7 @@ class Sentinel3DataProcessor:
                 print(f"Warning: All data is NaN for {satellite}_{data_type}")
             
             # Create plot
-            fig, ax = plt.subplots(figsize=(8, 8))
+            fig, ax = plt.subplots(figsize=(8, 8), subplot_kw={'projection': ccrs.PlateCarree()})
             
             # Set colormap based on data type
             cmap = 'cmo.haline' if data_type == 'chl' else 'cmo.thermal'
@@ -438,6 +439,11 @@ class Sentinel3DataProcessor:
             ax.set_ylabel('Latitude')
             ax.set_xlim(ds['lon'].min(), ds['lon'].max())
             ax.set_ylim(ds['lat'].min(), ds['lat'].max())
+            
+            # Add coastlines 
+            ax.add_feature(cartopy.feature.LAND, facecolor='w', zorder=2, edgecolor='grey', linewidths=1, alpha=1)
+            ax.add_feature(cartopy.feature.LAND, facecolor='olive', alpha=0.5, zorder=3, edgecolor=None, linewidths=0)
+        
             plt.axis('equal')
             plt.tight_layout()
             
@@ -450,33 +456,33 @@ class Sentinel3DataProcessor:
         else:
             return None
     
-    def _create_time_series_plots(
-        self,
-        ds: xr.Dataset,
-        data_var: str,
-        satellite: str,
-        data_type: str
-    ) -> List[Path]:
-        """Create individual plots for each time step."""
-        png_files = []
+    # def _create_time_series_plots(
+    #     self,
+    #     ds: xr.Dataset,
+    #     data_var: str,
+    #     satellite: str,
+    #     data_type: str
+    # ) -> List[Path]:
+    #     """Create individual plots for each time step."""
+    #     png_files = []
         
-        for i in range(ds.sizes['time']):
-            try:
-                # Get data for this time step
-                data = ds[data_var].isel(time=i)
+    #     for i in range(ds.sizes['time']):
+    #         try:
+    #             # Get data for this time step
+    #             data = ds[data_var].isel(time=i)
                 
-                # Skip if all NaN
-                if not np.isfinite(data.values).any():
-                    print(f"Skipping time step {i} (all NaN)")
-                    continue
+    #             # Skip if all NaN
+    #             if not np.isfinite(data.values).any():
+    #                 print(f"Skipping time step {i} (all NaN)")
+    #                 continue
                 
-                png_files.append(self._create_single_plot(ds.isel(time=i), data_var, satellite, data_type))
+    #             png_files.append(self._create_single_plot(ds.isel(time=i), data_var, satellite, data_type))
                 
-            except Exception as e:
-                print(f"Error creating plot for time step {i}: {e}")
-                continue
+    #         except Exception as e:
+    #             print(f"Error creating plot for time step {i}: {e}")
+    #             continue
         
-        return png_files
+    #     return png_files
     
     def _get_data_label(self, data_type: str) -> str:
         """Get appropriate label for data type."""
@@ -606,6 +612,8 @@ class Sentinel3DataProcessor:
         return optimal_start, optimal_end
 
 
+
+
 class Sentinel3Workflow:
     """Complete EUMETView data processing workflow"""
     
@@ -618,7 +626,9 @@ class Sentinel3Workflow:
         region: Tuple[float, float, float, float],
         time_range: Tuple[str, str],
         consumer_key: Optional[str] = None,
-        consumer_secret: Optional[str] = None
+        consumer_secret: Optional[str] = None,
+        smallbox: Tuple[List, List] = None,        
+        get_all_available: bool = False
     ):
         """
         Run the complete data processing workflow with incremental download.
@@ -653,14 +663,16 @@ class Sentinel3Workflow:
         for layer_key in layer_keys:
             print(f"\n--- Processing {layer_key} ---")
             
-            # # Parse satellite and data type
-            # satellite, data_type = self.processor._parse_layer_key(layer_key)
-            
-            # Get optimal time range for this specific layer
-            # optimal_start, optimal_end = self.processor.get_optimal_time_range(
-            #     satellite, data_type, requested_start, requested_end
-            # )
-            optimal_start, optimal_end = requested_start, requested_end
+            if not get_all_available:
+                # Parse satellite and data type
+                satellite, data_type = self.processor._parse_layer_key(layer_key)
+                
+                # Get optimal time range for this specific layer
+                optimal_start, optimal_end = self.processor.get_optimal_time_range(
+                    satellite, data_type, requested_start, requested_end
+                )
+            else:
+                optimal_start, optimal_end = requested_start, requested_end
             
             if optimal_start is None or optimal_end is None:
                 print(f"⏭️ Skipping {layer_key} - no new data needed")
@@ -684,21 +696,43 @@ class Sentinel3Workflow:
                 if downloaded_files:
                     total_downloaded += len(downloaded_files[layer_key])
                     print(f"✅ Downloaded {len(downloaded_files[layer_key])} files for {layer_key}")
-                    
-                    # Process and visualize immediately
-                    print(f"🎨 Creating visualizations for {layer_key}")
-                    visualization_files = self.processor.process_and_visualize(
-                        downloaded_files=downloaded_files
-                    )
-                    
-                    plots_count = sum(len(plots) for plots in visualization_files.values())
-                    total_visualized += plots_count
-                    print(f"✅ Generated {plots_count} plots for {layer_key}")
                 else:
                     print(f"⚠️ No data downloaded for {layer_key}")
+                                    
+            except Exception as e:
+                print(f"❌ Failed to dowload {layer_key}: {e}")
+                continue
+            
+            try:    
+                # Process and visualize immediately
+                print(f"🎨 Creating visualizations for {layer_key}")
+                visualization_files = self.processor.process_and_visualize(
+                    downloaded_files=downloaded_files,
+                    bbox_limits=None
+                )
+                
+                plots_count = sum(len(plots) for plots in visualization_files.values())
+                total_visualized += plots_count
+                print(f"✅ Generated {plots_count} plots for {layer_key}")
                     
             except Exception as e:
                 print(f"❌ Failed to process {layer_key}: {e}")
+                continue
+            
+            try:
+                if smallbox:
+                    print(f"🔍 Creating small box visualizations for {layer_key}")
+                    visualization_files = self.processor.process_and_visualize(
+                        downloaded_files=downloaded_files,
+                        bbox_limits=smallbox,
+                        strap='_inner'
+                    )
+                    
+                    plots_count = sum(len(plots) for plots in visualization_files.values())
+                    print(f"✅ Generated {plots_count} small box plots for {layer_key}")
+                    
+            except Exception as e:
+                print(f"❌ Failed to process small plot for {layer_key}: {e}")
                 continue
         
         # Print final summary

@@ -17,6 +17,8 @@ import xarray as xr
 import matplotlib
 matplotlib.use('Agg')  # Use non-interactive backend, only generate files without displaying windows
 import matplotlib.pyplot as plt
+import cartopy
+import cartopy.crs as ccrs
 
 # Add package basedir
 pkg_path = Path(__file__).parent.parent.parent.parent
@@ -146,6 +148,14 @@ class HimawariDataProcessor:
         print(f"Found {len(df)} data files")
         return df
     
+    
+    def get_processed_nc_files(self):
+        """Get list of already processed nc files in the unified directory."""
+        if not self.nc_dir.exists():
+            return []
+        return [f for f in self.nc_dir.glob("*.nc") if f.is_file()]
+    
+    
     def process_time_series(
         self,
         timelims: Tuple[str, str],
@@ -153,8 +163,6 @@ class HimawariDataProcessor:
         latlims: Tuple[float, float],
         tstep: int = 3600,
         netrc_path: Path = Path(__file__).parent / ".netrc",
-        temp_range: Optional[Tuple[float, float]] = None,
-        units: str = "K",
     ):
         self.ensure_earthdata_login(netrc_path)
 
@@ -164,7 +172,7 @@ class HimawariDataProcessor:
 
         # Account for processing delay
         now_utc = np.datetime64(pd.Timestamp.utcnow().to_pydatetime())
-        safe_latest = now_utc - np.timedelta64(3, 'h')
+        safe_latest = now_utc - np.timedelta64(2, 'h')
         dtrange = dtrange[dtrange <= safe_latest]
 
         print(f"Processing {len(dtrange)} time steps")
@@ -175,8 +183,6 @@ class HimawariDataProcessor:
                 dt,
                 lonlims,
                 latlims,
-                temp_range=temp_range,
-                units=units,
             )
 
     
@@ -185,8 +191,6 @@ class HimawariDataProcessor:
         dt: np.datetime64,
         lonlims: Tuple[float, float],
         latlims: Tuple[float, float],
-        temp_range: Optional[Tuple[float, float]] = None,   # Added
-        units: str = "K",                                    # Added
     ):
         dt_pd = pd.Timestamp(dt)
         time_str = dt_pd.strftime("%Y%m%d%H%M%S")
@@ -215,8 +219,7 @@ class HimawariDataProcessor:
 
         try:
             self._process_netcdf_file(
-                file_on_disk, output_path, lonlims, latlims, time_str,
-                temp_range=temp_range, units=units        # Pass down
+                file_on_disk, output_path, lonlims, latlims,
             )
         finally:
             if file_on_disk.exists():
@@ -225,22 +228,18 @@ class HimawariDataProcessor:
                     print(f"Removed temp file: {file_on_disk}")
                 except PermissionError:
                     print(f"Could not remove temp file (still in use): {file_on_disk}")
-
-    
+                    
+                    
     def _process_netcdf_file(
         self,
         file_path: Path,
         output_path: Path,
         lonlims: Tuple[float, float],
         latlims: Tuple[float, float],
-        time_str: str,
-        temp_range: Optional[Tuple[float, float]] = None,   # Added
-        units: str = "K",                                    # Added
     ):
         with xr.open_dataset(file_path, engine="netcdf4") as ds:
             lon_name = self._pick_coord_name(ds, ["lon", "longitude"])
             lat_name = self._pick_coord_name(ds, ["lat", "latitude"])
-            time_name = self._pick_coord_name(ds, ["time", "t"])
 
             if np.asarray(ds[lat_name]).ndim == 1:
                 if float(ds[lat_name].values[0]) > float(ds[lat_name].values[-1]):
@@ -260,12 +259,92 @@ class HimawariDataProcessor:
             ds_cropped.to_netcdf(output_path)
             print(f"Saved cropped dataset to {output_path}")
 
-            # Pass temperature range to plotting function
-            self._create_visualization(
-                ds_cropped, sst_name, time_name, time_str,
-                temp_range=temp_range, units=units
+
+    def visualise_time_series(
+        self,
+        timelims: Tuple[str, str],
+        tstep: int = 3600,
+        smallbox: Tuple[List, List] = None,
+        temp_range: Optional[Tuple[float, float]] = None,
+        units: str = "K",
+    ):
+
+        # Generate time range
+        dtlims = (np.datetime64(timelims[0]), np.datetime64(timelims[1]))
+        dtrange = np.arange(dtlims[0], dtlims[1], np.timedelta64(tstep, 's'))
+
+        # Account for processing delay
+        now_utc = np.datetime64(pd.Timestamp.utcnow().to_pydatetime())
+        safe_latest = now_utc - np.timedelta64(2, 'h')
+        dtrange = dtrange[dtrange <= safe_latest]
+
+        print(f"Processing {len(dtrange)} time steps")
+        print(f"Time range: {timelims[0]} to {timelims[-1]} UTC")
+
+        for dt in dtrange:
+            self._visualise_single_timestamp(
+                dt,
+                smallbox=smallbox,
+                temp_range=temp_range,
+                units=units,
             )
 
+
+    def _visualise_single_timestamp(
+        self,
+        dt: np.datetime64,
+        smallbox: Tuple[List, List] = None,
+        temp_range: Optional[Tuple[float, float]] = None,
+        units: str = "K",
+    ):
+        dt_pd = pd.Timestamp(dt)
+        time_str = dt_pd.strftime("%Y%m%d%H%M%S")
+        output_path = self.nc_dir / f"{time_str}.nc"
+
+        try:
+            self._visualise_netcdf_file(
+                output_path, time_str, smallbox=smallbox,
+                temp_range=temp_range, units=units
+            )
+        except Exception as e:
+            print(f"Error visualising {output_path}: {e}")
+                    
+                    
+    def _visualise_netcdf_file(
+        self,
+        output_path: Path,
+        time_str: str,
+        smallbox: Tuple[List, List] = None,
+        temp_range: Optional[Tuple[float, float]] = None,
+        units: str = "K"
+    ):
+        with xr.open_dataset(output_path, engine="netcdf4") as ds:
+            time_name = self._pick_coord_name(ds, ["time", "t"])
+            sst_name = self._find_sst_variable(ds)
+            
+            if smallbox is not None:
+                lon_name = self._pick_coord_name(ds, ["lon", "longitude"])
+                lat_name = self._pick_coord_name(ds, ["lat", "latitude"])
+                ds = ds.sel({lon_name: slice(smallbox[0][0], smallbox[0][1]), lat_name: slice(smallbox[1][0], smallbox[1][1])})
+                strap = '_inner'
+            else:
+                strap = ''
+
+            # Pass temperature range to plotting function
+            png_path = self.png_dir / f"{time_str}_Himawari{strap}.png"
+            if png_path.exists():
+                return None
+            
+            fig = self._create_visualization(
+                    ds, sst_name, time_name, time_str,
+                    temp_range=temp_range, units=units
+                    )   
+            
+            
+            fig.savefig(png_path, dpi=300, bbox_inches="tight")
+            plt.close()
+            print(f"Saved PNG: {png_path}")                 
+                             
     
     def _create_visualization(
         self,
@@ -327,7 +406,7 @@ class HimawariDataProcessor:
         norm = matplotlib.colors.Normalize(vmin=vmin, vmax=vmax, clip=False)
 
         # Plot
-        fig, ax = plt.subplots(figsize=(8, 8))
+        fig, ax = plt.subplots(figsize=(5.5, 8), subplot_kw={'projection': ccrs.PlateCarree()})
         im = ax.imshow(
             data,
             origin="lower",
@@ -344,13 +423,15 @@ class HimawariDataProcessor:
         ax.set_title(f"Himawari-9 SST {time_str}")
         ax.set_xlim(ds[lon_name].min(), ds[lon_name].max())
         ax.set_ylim(ds[lat_name].min(), ds[lat_name].max())
+        
+        # Add coastlines 
+        ax.add_feature(cartopy.feature.LAND, facecolor='w', zorder=2, edgecolor='grey', linewidths=1, alpha=1)
+        ax.add_feature(cartopy.feature.LAND, facecolor='olive', alpha=0.5, zorder=3, edgecolor=None, linewidths=0)
+
         plt.axis('equal')
         plt.tight_layout()
 
-        png_path = self.png_dir / f"{time_str}.png"
-        plt.savefig(png_path, dpi=300, bbox_inches="tight")
-        plt.close()
-        print(f"Saved PNG: {png_path} (range {vmin:.2f}–{vmax:.2f} K)")
+        return fig
 
 
 
@@ -411,7 +492,9 @@ class HimawariWorkflow:
         lonlims: Tuple[float, float],
         latlims: Tuple[float, float],
         tstep: int = 3600,
-        netrc_path: Path = pkg_path / "cred" / ".netrc"
+        netrc_path: Path = pkg_path / "cred" / ".netrc",
+        new_only=True,
+        smallbox: Tuple[List, List] = None
     ):
         """
         Run the complete data processing workflow: query -> download -> process -> merge -> analyze
@@ -424,6 +507,8 @@ class HimawariWorkflow:
             netrc_path: Path to .netrc file
         """
         print("=== Himawari Data Processing Workflow ===")
+
+        
         
         # Step 1: Query available data
         print("\nQuerying available data...")
@@ -443,10 +528,28 @@ class HimawariWorkflow:
             print(f"Saved data manifest to: {manifest_path}")
         except Exception as e:
             print(f"Failed to query data: {e}")
-            return
+
+
+        # Step 1.5: Query existing data    
+        if new_only:    
+            print("\nChecking for already processed files...")        
+            try: 
+                existing_files = self.processor.get_processed_nc_files()
+                last_file_str = existing_files[-1].name.strip(".nc")
+                
+                # Update timelims to only include new data
+                last_file_np = np.datetime64(last_file_str[0])
+                time_start_np = np.datetime64(timelims[0])
+                if last_file_np > time_start_np:
+                    timelims = (str(last_file_np + np.timedelta64(1, 's')), timelims[1])
+                    print(f"Updated time limits to only include new data: {timelims[0]} to {timelims[1]}")
+                    
+            except Exception as e:
+                print(f"Failed to check existing files and update time limits: {e}")
+
         
         # Step 2: Process time series data
-        print("\nProcessing time series data...")
+        print("\nProcessing data...")
         try:
             self.processor.process_time_series(
                 timelims=timelims,
@@ -456,8 +559,33 @@ class HimawariWorkflow:
                 netrc_path=netrc_path
             )
         except Exception as e:
-            print(f"Failed to process time series: {e}")
+            print(f"Failed to process data: {e}")
             return
+        
+        # Step 3: Visualize time series
+        print("\nVisualizing data...")
+        try:            
+            self.processor.visualise_time_series(
+                timelims=timelims,
+                tstep=tstep,
+                units="K"
+            )
+        except Exception as e:
+            print(f"Failed to visualize data: {e}")
+            return
+        
+        if smallbox is not None:
+            print("\nVisualizing cropped data...")
+            try:            
+                self.processor.visualise_time_series(
+                    timelims=timelims,
+                    smallbox=smallbox,
+                    tstep=tstep,
+                    units="K"
+                )
+            except Exception as e:
+                print(f"Failed to visualize cropped data: {e}")
+                return
         
         print(f"\n=== Workflow Complete ===")
         print(f"Results saved to: {self.processor.base_dir}")

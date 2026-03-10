@@ -26,6 +26,8 @@ import numpy as np
 import pandas as pd
 import xarray as xr
 import cmocean
+import cartopy
+import cartopy.crs as ccrs
 
 # Turn off warnings for cleaner output
 warnings.simplefilter("ignore")
@@ -140,7 +142,7 @@ class SwotDataProcessor:
             raise RuntimeError("No SWOT granules found for query")
 
         if only_last:
-            results = results[-1:]
+            results = results[-4:]
 
         files_full = earthaccess.download(results, local_path=self.fullnc_dir)
         
@@ -240,6 +242,7 @@ class SwotDataProcessor:
             print(f"Error subsetting {file_path}: {e}")
             return None
 
+
     def subset_files(
         self,
         filenames: List[str],
@@ -254,12 +257,14 @@ class SwotDataProcessor:
                 subset_files.append(subset_file)
         return subset_files
 
+
     def _create_single_plot(
         self,
         ds: xr.Dataset,
         variable: str,
         extent: Optional[List[float]] = None,
-        filename: Optional[str] = None
+        filename: Optional[str] = None,
+        strap: str = ""
     ) -> str:
         """Create a single plot for data with one time step."""
 
@@ -309,6 +314,14 @@ class SwotDataProcessor:
         
         # Get data for plotting
         data = ds[variable]
+        if extent:
+            data = data.where(
+                (ds.longitude >= extent[0]) &
+                (ds.longitude <= extent[1]) &
+                (ds.latitude >= extent[2]) &
+                (ds.latitude <= extent[3]),
+                drop=True
+            )
         
         # Handle time dimension indexing carefully
         if 'time' in data.dims:
@@ -322,7 +335,7 @@ class SwotDataProcessor:
                 pass
         
         # Create plot
-        fig, ax = plt.subplots(figsize=(4,8))
+        fig, ax = plt.subplots(figsize=(4,6.5), subplot_kw={'projection': ccrs.PlateCarree()})
 
         try:
             dmax = np.nanpercentile(np.abs(data.where(ds[variable + '_qual'] == 0)), 99)
@@ -350,15 +363,19 @@ class SwotDataProcessor:
         ax.set_title(f"SWOT {variable.upper()} - {timestamp}")
         
         if extent:
-            ax.set_xlim(extent[0], extent[2])
-            ax.set_ylim(extent[1], extent[3])
+            ax.set_xlim(extent[0], extent[1])
+            ax.set_ylim(extent[2], extent[3])
+            
+        # Add coastlines 
+        ax.add_feature(cartopy.feature.LAND, facecolor='w', zorder=2, edgecolor='grey', linewidths=1, alpha=1)
+        ax.add_feature(cartopy.feature.LAND, facecolor='olive', alpha=0.5, zorder=3, edgecolor=None, linewidths=0)
 
         plt.colorbar(im, shrink=0.3, label=data.attrs['long_name'] + f' [{data.attrs['units']}]')
         plt.axis('equal')
         plt.tight_layout()
         
         # Save plot
-        png_path = self.get_png_path(f"{timestamp}_{variable}.png")
+        png_path = self.get_png_path(f"{timestamp}_{variable}_swot{strap}.png")
         plt.savefig(png_path, dpi=300, bbox_inches='tight')
         plt.close()
         
@@ -371,6 +388,7 @@ class SwotDataProcessor:
         filenames: List[str],
         variable: str,
         extent: Optional[List[float]] = None,
+        strap: str = ""
     ) -> List[str]:
         """
         Create plots from NetCDF files.
@@ -393,18 +411,7 @@ class SwotDataProcessor:
                 if variable not in ds.data_vars:
                     print(f"Variable {variable} not found in {filename}")
                     continue
-                
-                # # Check if this is a true time series (1D time dimension with multiple steps)
-                # is_time_series = ('time' in ds.dims and 
-                #                 len(ds['time'].shape) == 1 and 
-                #                 ds.sizes['time'] > 1)
-                
-                # if is_time_series and create_individual_plots:
-                #     # Multiple time steps - create individual plots
-                #     png_files.extend(self._create_time_series_plots(ds, variable, extent))
-                # else:
-                # Single time step or 2D time structure - create one plot
-                
+
                 if np.all(ds[variable].isnull()):
                     print('No SWOT data to plot for {filename.name} - {variable}')
                     continue
@@ -418,7 +425,7 @@ class SwotDataProcessor:
                     except Exception as e:
                         pass
                 
-                png_file = self._create_single_plot(ds, variable, extent, filename)
+                png_file = self._create_single_plot(ds, variable, extent, filename, strap)
                 if png_file:
                     png_files.append(png_file)
                 ds.close()
@@ -429,13 +436,13 @@ class SwotDataProcessor:
         
         return png_files
 
+
     def process_and_visualize(
         self,
         downloaded_files: List[str],
         data_type: Dict[str, str],
         lon_range: Tuple[float, float],
         lat_range: Tuple[float, float],
-        create_individual_plots: bool = True
     ) -> Dict[str, List[str]]:
         """
         Process downloaded files and create visualizations.
@@ -454,7 +461,7 @@ class SwotDataProcessor:
         
         if not downloaded_files:
             print("No files to process")
-            return visualization_files
+            return None, visualization_files
         
         # Subset files
         print(f"Subsetting {len(downloaded_files)} files...")
@@ -478,54 +485,81 @@ class SwotDataProcessor:
                 extent = [lon_range[0], lon_range[1], lat_range[0], lat_range[1]]
                 
                 png_files = self.plot_datasets(
-                    vis_filnames, var_plt, extent, create_individual_plots
+                    vis_filnames, var_plt, extent
                 )
             
             visualization_files[var_plt] = png_files
             print(f"Generated {len(png_files)} plots for {var_plt}")
         
-        return visualization_files
+        return subset_filenames, visualization_files
+        
     
-    def plot_datasets(self, filenames: List[str], variable: str, extent: List[float], create_individual_plots: bool = True) -> List[str]:
+    def get_latest_file_time(self, satellite: str) -> Optional[datetime]:
         """
-        Plot datasets and create visualizations.
+        Get the latest time from existing NC files for a specific satellite and data type.
         
         Args:
-            filenames: List of subset filenames to plot
-            variable: Variable to plot
-            extent: [west_lon, east_lon, south_lat, north_lat]
-            create_individual_plots: Whether to create individual plots for each time step
+            satellite: Satellite name (sentinel3a, sentinel3b)
             
         Returns:
-            List of generated PNG file paths
+            Latest datetime found in existing files, or None if no files exist
         """
-        png_files = []
-        
-        for filename in filenames:
-            try:
-                # Load dataset
-                ds = xr.open_dataset(filename)
-                # # Check if this is a true time series (1D time dimension with multiple steps)
-                # is_time_series = ('time' in ds.dims and 
-                #                 len(ds['time'].shape) == 1 and 
-                #                 ds.sizes['time'] > 1)
-                
-                # if create_individual_plots and is_time_series:
-                #     # Create time series plots
-                #     png_files.extend(self._create_time_series_plots(ds, variable, extent))
-                # else:
-                # Create single plot
-                png_file = self._create_single_plot(ds, variable, extent, filename)
-                if png_file:
-                    png_files.append(png_file)
-                
-                ds.close()
-                
-            except Exception as e:
-                print(f"Error processing {filename}: {e}")
-                continue
-        
-        return png_files
+        try:
+            nc_dir = self.nc_dir
+            if not nc_dir.exists():
+                return None
+            
+            nc_files = list(nc_dir.glob("*.nc"))
+            if not nc_files:
+                return None
+            
+            latest_time = None
+            
+            for nc_file in nc_files:
+                try:
+                    with xr.open_dataset(nc_file) as ds:
+                        if 'time' in ds.variables:
+                            # Get the latest time from this file
+                            file_times = ds['time'].values.flatten()
+                            # Remove NaT values
+                            file_times = file_times[~pd.isnull(file_times)]
+    
+                            if len(file_times) > 0:
+                                # Convert to datetime
+                                if hasattr(file_times, 'max'):
+                                    max_time = file_times.max()
+                                else:
+                                    max_time = file_times[-1] if len(file_times) > 0 else file_times[0]
+                                
+                                # Convert numpy datetime to Python datetime
+                                if hasattr(max_time, 'item'):
+                                    max_time = max_time.item()
+                                
+                                # Handle different datetime formats
+                                if hasattr(max_time, 'to_pydatetime'):
+                                    max_time = max_time.to_pydatetime()
+                                elif isinstance(max_time, (int, float)):
+                                    # Handle timestamp (nanoseconds)
+                                    if max_time > 1e18:  # nanoseconds
+                                        max_time = datetime.fromtimestamp(max_time / 1e9)
+                                    elif max_time > 1e15:  # microseconds
+                                        max_time = datetime.fromtimestamp(max_time / 1e6)
+                                    elif max_time > 1e12:  # milliseconds
+                                        max_time = datetime.fromtimestamp(max_time / 1e3)
+                                    else:  # seconds
+                                        max_time = datetime.fromtimestamp(max_time)
+                                
+                                if latest_time is None or max_time > latest_time:
+                                    latest_time = max_time
+                except Exception as e:
+                    print(f"Warning: Could not read time from {nc_file}: {e}")
+                    continue
+            
+            return latest_time
+            
+        except Exception as e:
+            print(f"Error getting latest file time for {satellite}: {e}")
+            return None
 
 
 
@@ -544,6 +578,7 @@ class SwotWorkflow:
         latlims: Tuple[float, float],
         version: Optional[str] = None,
         only_last: bool = True,
+        smallbox: Optional[Tuple[List, List]] = None
     ) -> Dict[str, any]:
         """
         Run the complete SWOT data processing workflow.
@@ -565,7 +600,19 @@ class SwotWorkflow:
         print("\n1. Setting up authentication...")
         self.processor.authenticate()
         
-        print("🔍 Searching SWOT data...")
+        # Adjust time if only looking for new data
+        try:
+            if only_last:
+                latest_time = self.processor.get_latest_file_time(short_name)
+                print(latest_time)
+                if latest_time:
+                    latest_time += pd.Timedelta(minutes=30)
+                    timelims = (latest_time.strftime("%Y-%m-%dT%H:%M:%S"), timelims[1])
+        except Exception as e:
+            print(f"Error adjusting time limits: {e}")
+            print("Proceeding with original time limits")
+        
+        print(f"🔍 Searching SWOT data... {str(timelims[0])} to {str(timelims[1])}")
         try:
             results = self.processor.search_data(
                 short_name=short_name,
@@ -596,12 +643,24 @@ class SwotWorkflow:
             existing_files = list(Path(self.processor.nc_dir).glob("*.nc"))
             existing_file_names = {f.name for f in existing_files}
             new_files = [f for f in raw_files if f.name not in existing_file_names]
-            visualization_files = self.processor.process_and_visualize(
-                downloaded_files=new_files,
-                data_type=data_type,
-                lon_range=lonlims,
-                lat_range=latlims,
-            )
+            subset_filenames, visualization_files = self.processor.process_and_visualize(
+                                                        downloaded_files=new_files,
+                                                        data_type=data_type,
+                                                        lon_range=lonlims,
+                                                        lat_range=latlims,
+                                                    )
+            
+            if (subset_filenames is not None) and (smallbox is not None):
+                print("\nCreating small visualizations...")
+                smallbox_extent = [smallbox[0][0], smallbox[0][1], smallbox[1][0], smallbox[1][1]]
+                for var in list(data_type.values())[0]:
+                    png_files = self.processor.plot_datasets(
+                        filenames=subset_filenames,
+                        variable=var,
+                        extent=smallbox_extent,
+                        strap='_inner'
+                    )
+                    # visualization_files[var].extend(png_files)
             
             # Print summary
             total_plots = sum(len(visualization_files[ky]) for ky in visualization_files.keys())
