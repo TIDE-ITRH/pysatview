@@ -156,12 +156,12 @@ def latest_pdf(png_dirs):
 
 def main():
     png_dir_all = []
-    # try:
-    #     him_png = init_himawari_workflow()
-    #     png_dir_all += [him_png]
-    #     print("✅ Himawari modules initialized successfully\n")
-    # except Exception as e:
-    #     print(f"⚠️ Failed to initialize Himawari modules: {e}\n")
+    try:
+        him_png = init_himawari_workflow()
+        png_dir_all += [him_png]
+        print("✅ Himawari modules initialized successfully\n")
+    except Exception as e:
+        print(f"⚠️ Failed to initialize Himawari modules: {e}\n")
     
     try:
         sent_png = init_sentinel3_workflow()
@@ -170,12 +170,12 @@ def main():
     except Exception as e:
         print(f"⚠️ Failed to initialize Sentinel-3 modules: {e}\n")
     
-    # try:
-    #     swot_png = init_swot_workflow()
-    #     png_dir_all += [swot_png]
-    #     print("✅ SWOT modules initialized successfully\n")
-    # except Exception as e:
-    #     print(f"⚠️ Failed to initialize SWOT modules: {e}\n")
+    try:
+        swot_png = init_swot_workflow()
+        png_dir_all += [swot_png]
+        print("✅ SWOT modules initialized successfully\n")
+    except Exception as e:
+        print(f"⚠️ Failed to initialize SWOT modules: {e}\n")
         
     try:
         latest_pdf(png_dir_all)
