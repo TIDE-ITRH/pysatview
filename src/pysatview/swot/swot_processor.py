@@ -143,6 +143,8 @@ class SwotDataProcessor:
 
         if only_last:
             results = results[-4:]
+        # else:
+        #     results = results[2::4]
 
         files_full = earthaccess.download(results, local_path=self.fullnc_dir)
         
@@ -474,7 +476,7 @@ class SwotDataProcessor:
         
         if not subset_filenames:
             print("No subset files generated")
-            return visualization_files
+            return None, visualization_files
         
         # Create visualizations for each variable
         for dtype in data_type.keys():

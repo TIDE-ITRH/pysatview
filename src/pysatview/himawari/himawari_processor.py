@@ -560,7 +560,6 @@ class HimawariWorkflow:
             )
         except Exception as e:
             print(f"Failed to process data: {e}")
-            return
         
         # Step 3: Visualize time series
         print("\nVisualizing data...")
@@ -572,7 +571,6 @@ class HimawariWorkflow:
             )
         except Exception as e:
             print(f"Failed to visualize data: {e}")
-            return
         
         if smallbox is not None:
             print("\nVisualizing cropped data...")
@@ -585,7 +583,6 @@ class HimawariWorkflow:
                 )
             except Exception as e:
                 print(f"Failed to visualize cropped data: {e}")
-                return
         
         print(f"\n=== Workflow Complete ===")
         print(f"Results saved to: {self.processor.base_dir}")

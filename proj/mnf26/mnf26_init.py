@@ -2,6 +2,7 @@ from datetime import datetime, timezone, timedelta
 from pathlib import Path
 import shutil
 from PIL import Image
+import numpy as np
 
 
 from mnf26_proj import get_proj, get_s3_layers, get_swot_info
@@ -16,7 +17,7 @@ mnf_outer, mnf_inner = get_proj()
 
 proj_init_file = Path('mnf26_started.txt')
 
-base_dir = None
+base_dir = pkg_path / 'mnf_test'
 
 if proj_init_file.exists():
     proj_update = True
@@ -29,14 +30,16 @@ def init_himawari_workflow():
     """Initialise project for Himawari data processor"""
     
     if proj_update:
-        timelims = (mnf_outer['end_time'] - timedelta(days=2), mnf_outer['end_time'])
+        t_start = np.datetime64(mnf_outer['end_time']) - np.timedelta64(1, 'D')
+        t_start = t_start.astype('datetime64[h]')
+        timelims = (t_start, mnf_outer['end_time'])
     else:
         timelims = (mnf_outer['start_time'], mnf_outer['end_time'])
     lonlims = (mnf_outer['west_lon'], mnf_outer['east_lon'])
     latlims = (mnf_outer['south_lat'], mnf_outer['north_lat'])
     tstep = 3600  # 1 hour interval
     
-    workflow = HimawariWorkflow(base_dir=base_dir)
+    workflow = HimawariWorkflow(base_dir=base_dir / 'himawari')
     
     workflow.run_complete_workflow(
         timelims=timelims,
@@ -46,7 +49,7 @@ def init_himawari_workflow():
         smallbox=([mnf_inner['west_lon'], mnf_inner['east_lon']],
                 [mnf_inner['south_lat'], mnf_inner['north_lat']]),
     )
-    return workflow.processor.png_dir()
+    return workflow.processor.png_dir
     
 
 
@@ -54,7 +57,8 @@ def init_sentinel3_workflow():
     """Initialise project for Sentinel-3 data processor"""
     
     if proj_update:
-        timelims = (mnf_outer['end_time'] - timedelta(days=4), mnf_outer['end_time'])
+        t_start = datetime.fromisoformat(mnf_outer['end_time']) - timedelta(days=2)
+        timelims = (t_start.isoformat(), mnf_outer['end_time'])
     else:
         timelims = (mnf_outer['start_time'], mnf_outer['end_time'])
 
@@ -68,12 +72,14 @@ def init_sentinel3_workflow():
         layer_keys=layer_keys, 
         region=region, 
         time_range=timelims,
-        get_all_available = not proj_update
+        get_all_available = not proj_update,
+        smallbox=([mnf_inner['west_lon'], mnf_inner['east_lon']],
+                [mnf_inner['south_lat'], mnf_inner['north_lat']]),
     )
     png_dirs = []
     for layer in layer_keys:
         satellite, data_type = workflow.processor._parse_layer_key(layer)
-        png_dirs.append(workflow.processor.get_png_path(satellite, data_type))
+        png_dirs.append(workflow.processor.get_png_path(satellite, data_type, '_').parent)
     return png_dirs
     
     
@@ -84,14 +90,15 @@ def init_swot_workflow():
     swot_dict = get_swot_info()
     
     if proj_update:
-        timelims = (mnf_outer['end_time'] - timedelta(days=4), mnf_outer['end_time'])
+        t_start = np.datetime64(mnf_outer['end_time']) - np.timedelta64(4, 'D')
+        timelims = (str(t_start), mnf_outer['end_time'])
     else:
         timelims = (mnf_outer['start_time'], mnf_outer['end_time'])
 
     lonlims = (mnf_outer['west_lon'], mnf_outer['east_lon'])
     latlims = (mnf_outer['south_lat'], mnf_outer['north_lat'])
         
-    workflow = SwotWorkflow(base_dir=base_dir)
+    workflow = SwotWorkflow(base_dir=base_dir / 'swot')
 
     workflow.run_complete_workflow(
         short_name=swot_dict['short_name'], 
@@ -103,14 +110,14 @@ def init_swot_workflow():
         smallbox=([mnf_inner['west_lon'], mnf_inner['east_lon']],
                 [mnf_inner['south_lat'], mnf_inner['north_lat']]),
     )
-    return workflow.processor.png_dir()
+    return workflow.processor.png_dir
 
 
 
 def latest_pdf(png_dirs):
     '''Move files and create the latest PDF'''
     # Make the latest dir
-    latest_dir = Path(base_dir.parent / '_latest')
+    latest_dir = Path(base_dir / '_latest')
     latest_dir.mkdir(parents=True, exist_ok=True)
     
     for old_latest in latest_dir.iterdir():
@@ -149,32 +156,32 @@ def latest_pdf(png_dirs):
 
 def main():
     png_dir_all = []
-    try:
-        him_png = init_himawari_workflow()
-        png_dir_all += him_png
-        print("✅ Himawari modules initialized successfully")
-    except Exception as e:
-        print(f"⚠️ Failed to initialize Himawari modules: {e}")
+    # try:
+    #     him_png = init_himawari_workflow()
+    #     png_dir_all += [him_png]
+    #     print("✅ Himawari modules initialized successfully\n")
+    # except Exception as e:
+    #     print(f"⚠️ Failed to initialize Himawari modules: {e}\n")
     
     try:
         sent_png = init_sentinel3_workflow()
         png_dir_all += sent_png
-        print("✅ Sentinel-3 modules initialized successfully")
+        print("✅ Sentinel-3 modules initialized successfully\n")
     except Exception as e:
-        print(f"⚠️ Failed to initialize Sentinel-3 modules: {e}")
+        print(f"⚠️ Failed to initialize Sentinel-3 modules: {e}\n")
     
-    try:
-        swot_png = init_swot_workflow()
-        png_dir_all += swot_png
-        print("✅ SWOT modules initialized successfully")
-    except Exception as e:
-        print(f"⚠️ Failed to initialize SWOT modules: {e}")
+    # try:
+    #     swot_png = init_swot_workflow()
+    #     png_dir_all += [swot_png]
+    #     print("✅ SWOT modules initialized successfully\n")
+    # except Exception as e:
+    #     print(f"⚠️ Failed to initialize SWOT modules: {e}\n")
         
     try:
         latest_pdf(png_dir_all)
-        print("✅ PDF report compiled successfully")
+        print("✅ PDF report compiled successfully\n")
     except Exception as e:
-        print(f"⚠️ Failed to compile PDF report: {e}")
+        print(f"⚠️ Failed to compile PDF report: {e}\n")
     
     
 if __name__ == "__main__":

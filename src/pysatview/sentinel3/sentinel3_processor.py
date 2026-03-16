@@ -423,7 +423,7 @@ class Sentinel3DataProcessor:
                 print(f"Warning: All data is NaN for {satellite}_{data_type}")
             
             # Create plot
-            fig, ax = plt.subplots(figsize=(8, 8), subplot_kw={'projection': ccrs.PlateCarree()})
+            fig, ax = plt.subplots(figsize=(6, 8), subplot_kw={'projection': ccrs.PlateCarree()})
             
             # Set colormap based on data type
             cmap = 'cmo.haline' if data_type == 'chl' else 'cmo.thermal'
@@ -520,33 +520,37 @@ class Sentinel3DataProcessor:
                         if 'time' in ds.coords:
                             # Get the latest time from this file
                             file_times = ds['time'].values
-                            if len(file_times) > 0:
-                                # Convert to datetime
-                                if hasattr(file_times, 'max'):
-                                    max_time = file_times.max()
-                                else:
-                                    max_time = file_times[-1] if len(file_times) > 0 else file_times[0]
-                                
-                                # Convert numpy datetime to Python datetime
-                                if hasattr(max_time, 'item'):
-                                    max_time = max_time.item()
-                                
-                                # Handle different datetime formats
-                                if hasattr(max_time, 'to_pydatetime'):
-                                    max_time = max_time.to_pydatetime()
-                                elif isinstance(max_time, (int, float)):
-                                    # Handle timestamp (nanoseconds)
-                                    if max_time > 1e18:  # nanoseconds
-                                        max_time = datetime.fromtimestamp(max_time / 1e9)
-                                    elif max_time > 1e15:  # microseconds
-                                        max_time = datetime.fromtimestamp(max_time / 1e6)
-                                    elif max_time > 1e12:  # milliseconds
-                                        max_time = datetime.fromtimestamp(max_time / 1e3)
-                                    else:  # seconds
-                                        max_time = datetime.fromtimestamp(max_time)
-                                
-                                if latest_time is None or max_time > latest_time:
-                                    latest_time = max_time
+                            if hasattr(file_times, 'len'):
+                                if len(file_times) > 0:
+                                    # Convert to datetime
+                                    if hasattr(file_times, 'max'):
+                                        max_time = file_times.max()
+                                    else:
+                                        max_time = file_times[-1] if len(file_times) > 0 else file_times[0]
+                                    
+                                    # Convert numpy datetime to Python datetime
+                                    if hasattr(max_time, 'item'):
+                                        max_time = max_time.item()
+                                    
+                                    # Handle different datetime formats
+                                    if hasattr(max_time, 'to_pydatetime'):
+                                        max_time = max_time.to_pydatetime()
+                                    elif isinstance(max_time, (int, float)):
+                                        # Handle timestamp (nanoseconds)
+                                        if max_time > 1e18:  # nanoseconds
+                                            max_time = datetime.fromtimestamp(max_time / 1e9)
+                                        elif max_time > 1e15:  # microseconds
+                                            max_time = datetime.fromtimestamp(max_time / 1e6)
+                                        elif max_time > 1e12:  # milliseconds
+                                            max_time = datetime.fromtimestamp(max_time / 1e3)
+                                        else:  # seconds
+                                            max_time = datetime.fromtimestamp(max_time)
+                                    
+                                    if latest_time is None or max_time > latest_time:
+                                        latest_time = max_time
+                            # Check if numpy datetime64 type
+                            elif isinstance(file_times, np.datetime64):
+                                latest_time = file_times
                 except Exception as e:
                     print(f"Warning: Could not read time from {nc_file}: {e}")
                     continue
@@ -663,16 +667,16 @@ class Sentinel3Workflow:
         for layer_key in layer_keys:
             print(f"\n--- Processing {layer_key} ---")
             
-            if not get_all_available:
-                # Parse satellite and data type
-                satellite, data_type = self.processor._parse_layer_key(layer_key)
+            # if not get_all_available:
+            #     # Parse satellite and data type
+            #     satellite, data_type = self.processor._parse_layer_key(layer_key)
                 
-                # Get optimal time range for this specific layer
-                optimal_start, optimal_end = self.processor.get_optimal_time_range(
-                    satellite, data_type, requested_start, requested_end
-                )
-            else:
-                optimal_start, optimal_end = requested_start, requested_end
+            #     # Get optimal time range for this specific layer
+            #     optimal_start, optimal_end = self.processor.get_optimal_time_range(
+            #         satellite, data_type, requested_start, requested_end
+            #     )
+            # else:
+            optimal_start, optimal_end = requested_start, requested_end
             
             if optimal_start is None or optimal_end is None:
                 print(f"⏭️ Skipping {layer_key} - no new data needed")
