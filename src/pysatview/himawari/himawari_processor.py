@@ -298,7 +298,7 @@ class HimawariDataProcessor:
         units: str = "K",
     ):
         dt_pd = pd.Timestamp(dt)
-        time_str = dt_pd.strftime("%Y%m%d%H%M%S")
+        time_str = dt_pd.strftime("%Y%m%d%_H%M%S")
         output_path = self.nc_dir / f"{time_str}.nc"
 
         try:

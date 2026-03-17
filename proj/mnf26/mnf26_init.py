@@ -140,7 +140,7 @@ def latest_pdf(png_dirs):
                 
     # Copy all latest pngs to latest folder
     for png in pdf_files:
-        shutil.copy2(png, latest_dir / png.name)
+        shutil.copy2(png, latest_dir / png.name[15:])
         
     # Create PDF
     imgs = [Image.open(p) for p in pdf_files]

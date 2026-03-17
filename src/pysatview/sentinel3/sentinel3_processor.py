@@ -408,7 +408,7 @@ class Sentinel3DataProcessor:
         time_val = np.squeeze(ds['time'].values)
         time_str = pd.to_datetime(time_val).strftime("%Y-%m-%d %H:%M")
         file_time_str = pd.to_datetime(time_val).strftime("%Y%m%d_%H%M%S")
-        png_path = self.get_png_path(satellite, data_type, f"{file_time_str}_{data_type}{strap}.png")
+        png_path = self.get_png_path(satellite, data_type, f"{file_time_str}_{satellite}_{data_type}{strap}.png")
         
         # Skip if figure already saved
         if not png_path.exists():
