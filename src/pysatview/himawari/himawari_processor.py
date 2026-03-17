@@ -341,7 +341,7 @@ class HimawariDataProcessor:
                     )   
             
             
-            fig.savefig(png_path, dpi=300, bbox_inches="tight")
+            fig.savefig(png_path, dpi=100, bbox_inches="tight")
             plt.close()
             print(f"Saved PNG: {png_path}")                 
                              

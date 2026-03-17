@@ -13,7 +13,7 @@ src/pysatview/himawari/api.py
 src/pysatview/himawari/himawari_processor.py
 src/pysatview/sentinel3/__init__.py
 src/pysatview/sentinel3/api.py
-src/pysatview/sentinel3/usingtheEumetview.py
+src/pysatview/sentinel3/sentinel3_processor.py
 src/pysatview/shared/__init__.py
 src/pysatview/shared/base_api.py
 src/pysatview/shared/models.py
@@ -21,3 +21,4 @@ src/pysatview/shared/utils.py
 src/pysatview/swot/__init__.py
 src/pysatview/swot/api.py
 src/pysatview/swot/swot_processor.py
+src/pysatview/swot/swot_processor_AVISO.py

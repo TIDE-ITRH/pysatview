@@ -21,6 +21,7 @@ Requires-Dist: earthaccess
 Requires-Dist: owslib
 Requires-Dist: eumdac
 Requires-Dist: tqdm
+Requires-Dist: IProgress
 Requires-Dist: notebook
 Requires-Dist: ipykernel
 Requires-Dist: urllib3
@@ -28,3 +29,4 @@ Requires-Dist: seaborn
 Requires-Dist: netcdf4
 Requires-Dist: python-dateutil
 Requires-Dist: pathlib2
+Requires-Dist: cartopy
