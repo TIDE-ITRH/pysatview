@@ -337,7 +337,7 @@ class SwotDataProcessor:
                 pass
         
         # Create plot
-        fig, ax = plt.subplots(figsize=(4,6.5), subplot_kw={'projection': ccrs.PlateCarree()})
+        fig, ax = plt.subplots(figsize=(6,8), subplot_kw={'projection': ccrs.PlateCarree()})
 
         try:
             dmax = np.nanpercentile(np.abs(data.where(ds[variable + '_qual'] == 0)), 99)

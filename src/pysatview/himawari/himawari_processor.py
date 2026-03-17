@@ -406,7 +406,7 @@ class HimawariDataProcessor:
         norm = matplotlib.colors.Normalize(vmin=vmin, vmax=vmax, clip=False)
 
         # Plot
-        fig, ax = plt.subplots(figsize=(5.5, 8), subplot_kw={'projection': ccrs.PlateCarree()})
+        fig, ax = plt.subplots(figsize=(6, 8), subplot_kw={'projection': ccrs.PlateCarree()})
         im = ax.imshow(
             data,
             origin="lower",
