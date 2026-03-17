@@ -17,7 +17,8 @@ mnf_outer, mnf_inner = get_proj()
 
 proj_init_file = Path('mnf26_started.txt')
 
-base_dir = pkg_path / 'mnf_test'
+#base_dir = pkg_path / 'mnf_test'
+base_dir = Path('/data/shared-web/html/files/satview')
 
 if proj_init_file.exists():
     proj_update = True

@@ -2,17 +2,17 @@ from datetime import datetime, timezone
 
 
 mnf_outer = {
-    "start_time": '2026-03-10T00:00:00',
+    "start_time": '2026-03-14T00:00:00',
     "end_time": datetime.now(timezone.utc).isoformat(),
     "west_lon": 111.0,
-    "east_lon": 114.0,
+    "east_lon": 114.2,
     "south_lat": -25.0,
     "north_lat": -20.0
 }
 
 mnf_inner = {
     "west_lon": 113.0,
-    "east_lon": 114.0,
+    "east_lon": 114.2,
     "south_lat": -23.0,
     "north_lat": -21.0
 }

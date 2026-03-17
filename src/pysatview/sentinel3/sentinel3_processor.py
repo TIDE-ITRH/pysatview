@@ -448,7 +448,7 @@ class Sentinel3DataProcessor:
             plt.tight_layout()
             
             # Save plot using satellite/datatype/png structure
-            plt.savefig(png_path, dpi=300, bbox_inches='tight')
+            plt.savefig(png_path, dpi=100, bbox_inches='tight')
             plt.close()
             
             print(f"Saved plot: {png_path}")

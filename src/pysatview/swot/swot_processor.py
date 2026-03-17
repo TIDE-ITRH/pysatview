@@ -378,7 +378,7 @@ class SwotDataProcessor:
         
         # Save plot
         png_path = self.get_png_path(f"{timestamp}_{variable}_swot{strap}.png")
-        plt.savefig(png_path, dpi=300, bbox_inches='tight')
+        plt.savefig(png_path, dpi=100, bbox_inches='tight')
         plt.close()
         
         print(f"Saved plot: {png_path}")
