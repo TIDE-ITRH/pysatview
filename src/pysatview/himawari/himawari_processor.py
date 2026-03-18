@@ -606,11 +606,11 @@ class HimawariWorkflow:
         inner_path = output_dir / "inner_png_files.json"
         outer_path = output_dir / "outer_png_files.json"
 
-        inner_payload = {"inner_png_files": inner_files, "count": len(inner_files)}
-        outer_payload = {"outer_png_files": outer_files, "count": len(outer_files)}
+        # inner_payload = {"inner_png_files": inner_files}
+        # outer_payload = {"outer_png_files": outer_files}
 
-        inner_path.write_text(json.dumps(inner_payload, indent=2))
-        outer_path.write_text(json.dumps(outer_payload, indent=2))
+        inner_path.write_text(json.dumps(inner_files, indent=2))
+        outer_path.write_text(json.dumps(outer_files, indent=2))
 
         print(f"Saved inner PNG manifest to: {inner_path} ({len(inner_files)} files)")
         print(f"Saved outer PNG manifest to: {outer_path} ({len(outer_files)} files)")
