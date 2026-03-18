@@ -7,6 +7,7 @@ Himawari-9 satellite sea surface temperature data.
 
 import os
 import re
+import json
 from pathlib import Path
 from typing import Tuple, Optional, List
 
@@ -406,7 +407,7 @@ class HimawariDataProcessor:
         norm = matplotlib.colors.Normalize(vmin=vmin, vmax=vmax, clip=False)
 
         # Plot
-        fig, ax = plt.subplots(figsize=(5.5, 8), subplot_kw={'projection': ccrs.PlateCarree()})
+        fig, ax = plt.subplots(figsize=(6, 8), subplot_kw={'projection': ccrs.PlateCarree()})
         im = ax.imshow(
             data,
             origin="lower",
@@ -584,10 +585,35 @@ class HimawariWorkflow:
             except Exception as e:
                 print(f"Failed to visualize cropped data: {e}")
         
+        # Save JSON manifests of inner and non-inner PNGs
+        self.save_png_manifests()
+
         print(f"\n=== Workflow Complete ===")
         print(f"Results saved to: {self.processor.base_dir}")
         print(f"- Processed files: {self.processor.nc_dir}")
         print(f"- Visualizations: {self.processor.png_dir}")
+
+    def save_png_manifests(self, output_dir: Optional[Path] = None):
+        """Save manifest JSON files for inner and non-inner PNGs."""
+        output_dir = output_dir or self.processor.png_dir
+        output_dir.mkdir(parents=True, exist_ok=True)
+
+        png_files = sorted([p.name for p in output_dir.glob("*.png") if p.is_file()])
+        inner_files = [f for f in png_files if "inner" in f]
+        outer_files = [f for f in png_files if "inner" not in f]
+
+        # Innner and outer JSON files
+        inner_path = output_dir / "inner_png_files.json"
+        outer_path = output_dir / "outer_png_files.json"
+
+        inner_payload = {"inner_png_files": inner_files, "count": len(inner_files)}
+        outer_payload = {"outer_png_files": outer_files, "count": len(outer_files)}
+
+        inner_path.write_text(json.dumps(inner_payload, indent=2))
+        outer_path.write_text(json.dumps(outer_payload, indent=2))
+
+        print(f"Saved inner PNG manifest to: {inner_path} ({len(inner_files)} files)")
+        print(f"Saved outer PNG manifest to: {outer_path} ({len(outer_files)} files)")
     
 
 
