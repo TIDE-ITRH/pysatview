@@ -141,7 +141,7 @@ def latest_pdf(png_dirs):
                 
     # Copy all latest pngs to latest folder
     for png in pdf_files:
-        shutil.copy2(png, latest_dir / png.name[15:])
+        shutil.copy2(png, latest_dir / png.name[16:])
         
     # Create PDF
     imgs = [Image.open(p) for p in pdf_files]
@@ -150,7 +150,8 @@ def latest_pdf(png_dirs):
     # first image .save() with the rest as an append list
     out_path = latest_dir / (datetime.now(timezone.utc).strftime("%Y%m%d_%H") + "h_latest.pdf")
     imgs[0].save(out_path, save_all=True, append_images=imgs[1:])
-    print(f"Created {out_path} with {len(imgs)} pages")    
+    print(f"Created {out_path} with {len(imgs)} pages")  
+    
 
     
 
