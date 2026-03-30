@@ -434,6 +434,11 @@ class Sentinel3DataProcessor:
                 im = ax.pcolormesh(ds['lon'], ds['lat'], data, cmap=cmap, vmin=data.quantile(0.025), vmax=data.quantile(0.975))
             plt.colorbar(im, ax=ax, label=self._get_data_label(data_type))
             
+            # Mooring locations
+            moorings_x = [113.6078959, 113.6734913, 113.6557312, 113.6560773, 113.6360664]
+            moorings_y = [-22.44167179, -22.40883749, -22.4418941, -22.44102788, -22.48275732]
+            ax.plot(moorings_x, moorings_y, 'k.')
+
             ax.set_title(f"{satellite.upper()} {data_type.upper()} - {time_str}")
             ax.set_xlabel('Longitude')
             ax.set_ylabel('Latitude')

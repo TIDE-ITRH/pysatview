@@ -380,6 +380,9 @@ class HimawariDataProcessor:
         south, north = float(np.nanmin(lat)), float(np.nanmax(lat))
         extent = [west, east, south, north]
 
+
+
+
         # Handle temperature range (default use data min/max; if range given, use range and set out-of-range to white)
         data = np.array(sst0.values, dtype=float)  # Copy to ndarray
         if temp_range is None:
@@ -418,6 +421,12 @@ class HimawariDataProcessor:
         )
         cbar_units = "°C" if units.upper() == "C" else "K"
         plt.colorbar(im, ax=ax, label=f"Sea Surface Temperature ({cbar_units})")
+
+
+        # Mooring locations
+        moorings_x = [113.6078959, 113.6734913, 113.6557312, 113.6560773, 113.6360664]
+        moorings_y = [-22.44167179, -22.40883749, -22.4418941, -22.44102788, -22.48275732]
+        ax.plot(moorings_x, moorings_y, 'k.')
 
         ax.set_xlabel("Longitude (°)")
         ax.set_ylabel("Latitude (°)")
