@@ -9,6 +9,7 @@ from mnf26_proj import get_proj, get_s3_layers, get_swot_info
 from pysatview.himawari.himawari_processor import HimawariWorkflow
 from pysatview.sentinel3.sentinel3_processor import Sentinel3Workflow
 from pysatview.swot.swot_processor import SwotWorkflow
+from pysatview.himawari_ssc.him_ssc_processor import SSCWorkflow
 
 
 pkg_path = Path(__file__).parent.parent.parent
@@ -113,6 +114,31 @@ def init_swot_workflow():
     )
     return workflow.processor.png_dir
 
+
+def init_himssc_workflow():
+    """Initialise project for Himawari SSC data processor"""
+    
+    if proj_update:
+        t_start = np.datetime64(mnf_outer['end_time']) - np.timedelta64(12, 'h')
+        t_start = t_start.astype('datetime64[h]')
+        timelims = (t_start, mnf_outer['end_time'])
+    else:
+        timelims = (mnf_outer['start_time'], mnf_outer['end_time'])
+    lonlims = (mnf_outer['west_lon'], mnf_outer['east_lon'])
+    latlims = (mnf_outer['south_lat'], mnf_outer['north_lat'])
+    tstep = 3600  # 1 hour interval
+    
+    workflow = SSCWorkflow(base_dir=base_dir / 'himawari_ssc')
+    workflow.run_complete_workflow(
+        timelims=timelims,
+        lonlims=lonlims,
+        latlims=latlims,
+        tstep=tstep,
+        smallbox=([mnf_inner['west_lon'], mnf_inner['east_lon']],
+                [mnf_inner['south_lat'], mnf_inner['north_lat']]),
+    )
+    return workflow.processor.png_dir
+    
 
 
 def latest_pdf(png_dirs):

@@ -230,7 +230,7 @@ class HimawariDataProcessor:
                 except PermissionError:
                     print(f"Could not remove temp file (still in use): {file_on_disk}")
                     
-                    
+
     def _process_netcdf_file(
         self,
         file_path: Path,
@@ -380,9 +380,6 @@ class HimawariDataProcessor:
         south, north = float(np.nanmin(lat)), float(np.nanmax(lat))
         extent = [west, east, south, north]
 
-
-
-
         # Handle temperature range (default use data min/max; if range given, use range and set out-of-range to white)
         data = np.array(sst0.values, dtype=float)  # Copy to ndarray
         if temp_range is None:
@@ -518,8 +515,7 @@ class HimawariWorkflow:
         """
         print("=== Himawari Data Processing Workflow ===")
 
-        
-        
+
         # Step 1: Query available data
         print("\nQuerying available data...")
         try:
