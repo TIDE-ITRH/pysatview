@@ -179,7 +179,6 @@ def latest_pdf(png_dirs):
     print(f"Created {out_path} with {len(imgs)} pages")  
     
 
-    
 
 
 def main():

@@ -56,7 +56,7 @@ class HimSSCDataProcessor:
         latlims: Tuple[float, float],
         tstep: int = 3600,
         netrc_path: Path = Path(__file__).parent / ".netrc",
-        smallbox: Tuple[List, List]] = None
+        smallbox: Optional[Tuple[List, List]] = None
     ):
         self.ensure_earthdata_login(netrc_path)
 
@@ -86,7 +86,7 @@ class HimSSCDataProcessor:
         dt: np.datetime64,
         lonlims: Tuple[float, float],
         latlims: Tuple[float, float],
-        smallbox: Tuple[List, List]] = None
+        smallbox: Optional[Tuple[List, List]] = None
     ):
         dt_pd = pd.Timestamp(dt)
         time_str = dt_pd.strftime("%Y%m%d%H%M%S")
