@@ -145,7 +145,7 @@ class HimSSCDataProcessor:
         fig, ax = plots.plot_gradients(ds)
         
 
-        png_name = f"{plt_str}_SST_gradients_Gascoyne.png"
+        png_name = f"{plt_str}_SST_gradients_outer.png"
         png_path = Path.joinpath(self.png_dir, png_name)
         for x in ax:
             x.add_feature(cartopy.feature.LAND, facecolor='w', zorder=2, edgecolor='grey', linewidths=1, alpha=1)
@@ -153,7 +153,7 @@ class HimSSCDataProcessor:
 
         fig.savefig(png_path, dpi=300, bbox_inches="tight")
         if smallbox:
-            small_name = f"{plt_str}_SST_gradients_Ningaloo.png"
+            small_name = f"{plt_str}_SST_gradients_inner.png"
             for x in ax:
                 x.set_xlim(smallbox[0])
                 x.set_ylim(smallbox[1])
