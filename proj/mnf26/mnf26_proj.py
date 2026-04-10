@@ -2,8 +2,8 @@ from datetime import datetime, timezone
 
 
 mnf_outer = {
-    "start_time": '2026-03-12T00:00:00',
-    "end_time": datetime.now(timezone.utc).isoformat(),
+    "start_time": '2026-03-31T00:00:00',
+    "end_time": '2026-04-05T00:00:00',
     "west_lon": 111.0,
     "east_lon": 114.2,
     "south_lat": -25.0,

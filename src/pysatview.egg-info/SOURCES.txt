@@ -11,6 +11,8 @@ src/pysatview.egg-info/top_level.txt
 src/pysatview/himawari/__init__.py
 src/pysatview/himawari/api.py
 src/pysatview/himawari/himawari_processor.py
+src/pysatview/himawari_ssc/__init__.py
+src/pysatview/himawari_ssc/him_ssc_processor.py
 src/pysatview/sentinel3/__init__.py
 src/pysatview/sentinel3/api.py
 src/pysatview/sentinel3/sentinel3_processor.py

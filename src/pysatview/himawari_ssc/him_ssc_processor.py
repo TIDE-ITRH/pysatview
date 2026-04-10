@@ -4,9 +4,12 @@ import json
 from pathlib import Path
 from typing import Tuple, Optional, List
 
+import cartopy
 import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
+
+import earthaccess
 
 from inversion_sst_gp import plots
 from inversion_sst_gp import gp_regression as gpr
@@ -48,6 +51,27 @@ class HimSSCDataProcessor:
         if not self.nc_dir.exists():
             return []
         return [f for f in self.nc_dir.glob("*.nc") if f.is_file()]
+    
+    def ensure_earthdata_login(self, netrc_path: Path=pkg_path / "cred" / ".netrc"):
+        """Login to Earthdata using .netrc file."""
+        if not netrc_path.exists():
+            raise FileNotFoundError(
+                f".netrc not found at {netrc_path}\n"
+                "Create a .netrc file with:\n"
+                "machine urs.earthdata.nasa.gov\n  login YOUR_USERNAME\n  password YOUR_PASSWORD\n"
+            )
+        
+        os.environ["NETRC"] = str(netrc_path.resolve())
+        
+        # Remove proxy settings that might interfere
+        for key in ["HTTP_PROXY", "HTTPS_PROXY", "http_proxy", "https_proxy"]:
+            os.environ.pop(key, None)
+            
+        auth = earthaccess.login(strategy="netrc", persist=True)
+        if not auth.authenticated:
+            raise RuntimeError("Earthdata login failed. Check .netrc credentials")
+        
+        print("✓ Successfully authenticated with Earthdata")
 
     def process_time_series(
         self,
@@ -56,7 +80,7 @@ class HimSSCDataProcessor:
         latlims: Tuple[float, float],
         tstep: int = 3600,
         netrc_path: Path = Path(__file__).parent / ".netrc",
-        smallbox: Tuple[List, List]] = None
+        smallbox: Optional[Tuple[List, List]] = None
     ):
         self.ensure_earthdata_login(netrc_path)
 
@@ -73,8 +97,10 @@ class HimSSCDataProcessor:
         print(f"Time range: {timelims[0]} to {timelims[-1]} UTC")
 
         for dt in dtrange:
+            # Format back to string for download
+            dt_str = pd.Timestamp(dt).strftime("%Y-%m-%dT%H:%M:%S")
             self._process_single_timestamp(
-                dt,
+                dt_str,
                 lonlims,
                 latlims,
                 smallbox=smallbox
@@ -86,41 +112,53 @@ class HimSSCDataProcessor:
         dt: np.datetime64,
         lonlims: Tuple[float, float],
         latlims: Tuple[float, float],
-        smallbox: Tuple[List, List]] = None
+        smallbox: Optional[Tuple[List, List]] = None
     ):
         dt_pd = pd.Timestamp(dt)
-        time_str = dt_pd.strftime("%Y%m%d%H%M%S")
+        plt_str = dt_pd.strftime("%Y%m%d%H%M%S")
         
         ll_box = (lonlims, latlims)
         
         try:
-            print(f"\nProcessing timestamp: {time_str} UTC")
+            print(f"\nProcessing timestamp: {dt} UTC")
             # Download the data
-            himawari.get_sst_scene_nasa(time_str, self.nc_dir)
+            himawari.get_sst_scene_nasa(dt, self.nc_dir)
             
             # Crop and overwrite the full files (optional)
-            previous_time, current_time, next_time = himawari.get_str_timesteps(time_str)
+            previous_time, current_time, next_time = himawari.get_str_timesteps(dt)
             time_comb = [previous_time, current_time, next_time]
             [himawari.crop_sst_scene_nasa(self.nc_dir, time_list, ll_box,
                                         file_app='', overwrite=True) for time_list in time_comb]
             
             # Load the data
-            ds = himawari.process_sst_scene(self.nc_dir, time_str, ll_box, sst_reduce=3)
+            ds = himawari.process_sst_scene(self.nc_dir, dt, ll_box, sst_reduce=2)
         except Exception as e:
-            print(f"Failed to process timestamp {time_str}: {e}")
+            print(f"Failed to process timestamp {dt}: {e}")
+            return
+        
+        # Check if dataset is empty after processing
+        if ds is None or ds.sizes.get('time', 0) == 0:
+            print(f"No valid data for timestamp {dt} after processing. Skipping.")
             return
         
         # Plot the spatial gradient data
         fig, ax = plots.plot_gradients(ds)
-        png_name = f"{time_str}_SST_gradients_Gascoyne.png"
+        
+
+        png_name = f"{plt_str}_SST_gradients_Gascoyne.png"
         png_path = Path.joinpath(self.png_dir, png_name)
-        fig.savefig(png_path, dpi=100, bbox_inches="tight")
+        for x in ax:
+            x.add_feature(cartopy.feature.LAND, facecolor='w', zorder=2, edgecolor='grey', linewidths=1, alpha=1)
+            x.add_feature(cartopy.feature.LAND, facecolor='olive', alpha=0.5, zorder=3, edgecolor=None, linewidths=0)
+
+        fig.savefig(png_path, dpi=300, bbox_inches="tight")
         if smallbox:
-            small_name = f"{time_str}_SST_gradients_Ningaloo.png"
-            ax.set_xlim(smallbox[0])
-            ax.set_ylim(smallbox[1])
+            small_name = f"{plt_str}_SST_gradients_Ningaloo.png"
+            for x in ax:
+                x.set_xlim(smallbox[0])
+                x.set_ylim(smallbox[1])
             small_path = Path.joinpath(self.png_dir, small_name)
-            fig.savefig(small_path, dpi=100, bbox_inches="tight")
+            fig.savefig(small_path, dpi=300, bbox_inches="tight")
         plt.close()
         print(f"Saved gradients PNG: {png_path}")  
 
@@ -132,7 +170,9 @@ class HimSSCDataProcessor:
 
         try:
             print("Fitting hyperparameters...")
-            ds_results = gpr.fit_scene(ds, prop_sat, callback='off')
+            ds_results = gpr.fit_scene(ds, prop_sat, callback='off', coverage=0.4)
+            if ds_results is None:
+                return
         except Exception as e:
             print(f"Failed to fit hyperparameters: {e}")
             return
@@ -140,20 +180,25 @@ class HimSSCDataProcessor:
         try:
             print("Calculating current predictions")
             ds_prediction, Kpp_posterior = gpr.predict_scene(ds.isel(time=0), ds_results,
-                                                            return_prior=True, return_cov=True)
+                                                            return_prior=True, return_cov=True,
+                                                            coverage=0.4)
 
             fig, ax = plots.plot_pred_ellipses(ds_prediction, Kpp_posterior, scale=7, color='grey',
                                                alpha=0.5, an=False)
             
-            png_name = f"{time_str}_SST_predictions_Gascoyne.png"
+            png_name = f"{plt_str}_SST_predictions_outer.png"
             png_path = Path.joinpath(self.png_dir, png_name)
-            fig.savefig(png_path, dpi=100, bbox_inches="tight")
+            for x in ax:
+                x.add_feature(cartopy.feature.LAND, facecolor='w', zorder=2, edgecolor='grey', linewidths=1, alpha=1)
+                x.add_feature(cartopy.feature.LAND, facecolor='olive', alpha=0.5, zorder=3, edgecolor=None, linewidths=0)
+            fig.savefig(png_path, dpi=300, bbox_inches="tight")
             if smallbox:
-                small_name = f"{time_str}_SST_predictions_Ningaloo.png"
-                ax.set_xlim(smallbox[0])
-                ax.set_ylim(smallbox[1])
+                small_name = f"{plt_str}_SST_predictions_inner.png"
+                for x in ax:
+                    x.set_xlim(smallbox[0])
+                    x.set_ylim(smallbox[1])
                 small_path = Path.joinpath(self.png_dir, small_name)
-                fig.savefig(small_path, dpi=100, bbox_inches="tight")
+                fig.savefig(small_path, dpi=300, bbox_inches="tight")
             plt.close()
             print(f"Saved predictions PNG: {png_path}")  
         
@@ -195,14 +240,15 @@ class SSCWorkflow:
             print("\nChecking for already processed files...")        
             try: 
                 existing_files = self.processor.get_processed_nc_files()
-                last_file_str = existing_files[-2].name.strip(".nc")
+                if existing_files:
+                    last_file_str = existing_files[-2].name.strip(".nc")
                 
-                # Update timelims to only include new data
-                last_file_np = np.datetime64(last_file_str[0])
-                time_start_np = np.datetime64(timelims[0])
-                if last_file_np > time_start_np:
-                    timelims = (str(last_file_np + np.timedelta64(1, 's')), timelims[1])
-                    print(f"Updated time limits to only include new data: {timelims[0]} to {timelims[1]}")
+                    # Update timelims to only include new data
+                    last_file_np = np.datetime64(last_file_str[0])
+                    time_start_np = np.datetime64(timelims[0])
+                    if last_file_np > time_start_np:
+                        timelims = (str(last_file_np + np.timedelta64(1, 's')), timelims[1])
+                        print(f"Updated time limits to only include new data: {timelims[0]} to {timelims[1]}")
                     
             except Exception as e:
                 print(f"Failed to check existing files and update time limits: {e}")

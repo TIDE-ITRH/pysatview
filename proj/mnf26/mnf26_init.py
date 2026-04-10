@@ -119,13 +119,13 @@ def init_himssc_workflow():
     """Initialise project for Himawari SSC data processor"""
     
     if proj_update:
-        t_start = np.datetime64(mnf_outer['end_time']) - np.timedelta64(12, 'h')
+        t_start = np.datetime64(mnf_outer['end_time']) - np.timedelta64(24, 'h')
         t_start = t_start.astype('datetime64[h]')
         timelims = (t_start, mnf_outer['end_time'])
     else:
         timelims = (mnf_outer['start_time'], mnf_outer['end_time'])
-    lonlims = (mnf_outer['west_lon'], mnf_outer['east_lon'])
-    latlims = (mnf_outer['south_lat'], mnf_outer['north_lat'])
+    lonlims = (112.7, 113.9)
+    latlims = (-23.6, -21.6)
     tstep = 3600  # 1 hour interval
     
     workflow = SSCWorkflow(base_dir=base_dir / 'himawari_ssc')
@@ -134,8 +134,8 @@ def init_himssc_workflow():
         lonlims=lonlims,
         latlims=latlims,
         tstep=tstep,
-        smallbox=([mnf_inner['west_lon'], mnf_inner['east_lon']],
-                [mnf_inner['south_lat'], mnf_inner['north_lat']]),
+        smallbox=([113.01, 113.89],
+                [-22.99, -22.01]),
     )
     return workflow.processor.png_dir
     
@@ -204,6 +204,13 @@ def main():
         print("✅ SWOT modules initialized successfully\n")
     except Exception as e:
         print(f"⚠️ Failed to initialize SWOT modules: {e}\n")
+        
+    try:
+        himssc_png = init_himssc_workflow()
+        png_dir_all += [himssc_png]
+        print("✅ Himawari SSC modules initialized successfully\n")
+    except Exception as e:
+        print(f"⚠️ Failed to initialize Himawari SSC modules: {e}\n")
         
     try:
         latest_pdf(png_dir_all)
