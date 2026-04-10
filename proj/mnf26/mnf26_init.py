@@ -205,10 +205,18 @@ def main():
         print(f"⚠️ Failed to initialize SWOT modules: {e}\n")
         
     try:
+        himsc_png = init_himssc_workflow()
+        png_dir_all += [himsc_png]
+        print("✅ Himawari SSC modules initialized successfully\n")
+    except Exception as e:
+        print(f"⚠️ Failed to initialize Himawari SSC modules: {e}\n")
+
+    try:
         latest_pdf(png_dir_all)
         print("✅ PDF report compiled successfully\n")
     except Exception as e:
         print(f"⚠️ Failed to compile PDF report: {e}\n")
+  
     
     
 if __name__ == "__main__":
