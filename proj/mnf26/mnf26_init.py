@@ -177,9 +177,6 @@ def latest_pdf(png_dirs):
     out_path = latest_dir / (datetime.now(timezone.utc).strftime("%Y%m%d_%H") + "h_latest.pdf")
     imgs[0].save(out_path, save_all=True, append_images=imgs[1:])
     print(f"Created {out_path} with {len(imgs)} pages")  
-    
-
-    
 
 
 def main():
@@ -217,6 +214,7 @@ def main():
         print("✅ PDF report compiled successfully\n")
     except Exception as e:
         print(f"⚠️ Failed to compile PDF report: {e}\n")
+  
     
     
 if __name__ == "__main__":
