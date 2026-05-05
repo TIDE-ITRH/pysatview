@@ -3,7 +3,7 @@ from pathlib import Path
 import shutil
 from PIL import Image
 import numpy as np
-
+import pandas as pd
 
 from mnf26_proj import get_proj, get_s3_layers, get_swot_info
 from pysatview.himawari.himawari_processor import HimawariWorkflow
@@ -16,7 +16,7 @@ pkg_path = Path(__file__).parent.parent.parent
 
 mnf_outer, mnf_inner = get_proj()
 
-proj_init_file = Path('mnf26_started.txt')
+proj_init_file = Path('/home/will/pysatview/proj/mnf26/mnf26_started.txt')
 
 #base_dir = pkg_path / 'mnf_test'
 base_dir = Path('/data/shared-web/html/files/satview')
@@ -34,7 +34,7 @@ def init_himawari_workflow():
     if proj_update:
         t_start = np.datetime64(mnf_outer['end_time']) - np.timedelta64(1, 'D')
         t_start = t_start.astype('datetime64[h]')
-        timelims = (t_start, mnf_outer['end_time'])
+        timelims = (pd.to_datetime(t_start).strftime("%Y-%m-%dT%H:%M:%S"), mnf_outer['end_time'])
     else:
         timelims = (mnf_outer['start_time'], mnf_outer['end_time'])
     lonlims = (mnf_outer['west_lon'], mnf_outer['east_lon'])
@@ -93,7 +93,8 @@ def init_swot_workflow():
     
     if proj_update:
         t_start = np.datetime64(mnf_outer['end_time']) - np.timedelta64(4, 'D')
-        timelims = (str(t_start), mnf_outer['end_time'])
+        t_start = t_start.astype('datetime64[h]')
+        timelims = (pd.to_datetime(t_start).strftime("%Y-%m-%dT%H:%M:%S"), mnf_outer['end_time'])
     else:
         timelims = (mnf_outer['start_time'], mnf_outer['end_time'])
 
@@ -121,7 +122,7 @@ def init_himssc_workflow():
     if proj_update:
         t_start = np.datetime64(mnf_outer['end_time']) - np.timedelta64(24, 'h')
         t_start = t_start.astype('datetime64[h]')
-        timelims = (t_start, mnf_outer['end_time'])
+        timelims = (pd.to_datetime(t_start).strftime("%Y-%m-%dT%H:%M:%S"), mnf_outer['end_time'])
     else:
         timelims = (mnf_outer['start_time'], mnf_outer['end_time'])
     lonlims = (112.7, 113.9)

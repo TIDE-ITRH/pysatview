@@ -147,9 +147,10 @@ class HimSSCDataProcessor:
 
         png_name = f"{plt_str}_SST_gradients_outer.png"
         png_path = Path.joinpath(self.png_dir, png_name)
-        for x in ax:
-            x.add_feature(cartopy.feature.LAND, facecolor='w', zorder=2, edgecolor='grey', linewidths=1, alpha=1)
-            x.add_feature(cartopy.feature.LAND, facecolor='olive', alpha=0.5, zorder=3, edgecolor=None, linewidths=0)
+        # for x in ax:
+        #     if x.projection is not None:
+        #         x.add_feature(cartopy.feature.LAND, facecolor='w', zorder=2, edgecolor='grey', linewidths=1, alpha=1)
+        #         x.add_feature(cartopy.feature.LAND, facecolor='olive', alpha=0.5, zorder=3, edgecolor=None, linewidths=0)
 
         fig.savefig(png_path, dpi=300, bbox_inches="tight")
         if smallbox:
@@ -188,9 +189,10 @@ class HimSSCDataProcessor:
             
             png_name = f"{plt_str}_SST_predictions_outer.png"
             png_path = Path.joinpath(self.png_dir, png_name)
-            for x in ax:
-                x.add_feature(cartopy.feature.LAND, facecolor='w', zorder=2, edgecolor='grey', linewidths=1, alpha=1)
-                x.add_feature(cartopy.feature.LAND, facecolor='olive', alpha=0.5, zorder=3, edgecolor=None, linewidths=0)
+            # for x in ax:
+            #     if x.projection is not None:
+            #         x.add_feature(cartopy.feature.LAND, facecolor='w', zorder=2, edgecolor='grey', linewidths=1, alpha=1)
+            #         x.add_feature(cartopy.feature.LAND, facecolor='olive', alpha=0.5, zorder=3, edgecolor=None, linewidths=0)
             fig.savefig(png_path, dpi=300, bbox_inches="tight")
             if smallbox:
                 small_name = f"{plt_str}_SST_predictions_inner.png"
@@ -282,8 +284,8 @@ class SSCWorkflow:
         output_dir.mkdir(parents=True, exist_ok=True)
 
         png_files = sorted([p.name for p in output_dir.glob("*.png") if p.is_file()])
-        inner_files = [f for f in png_files if "Ningaloo" in f]
-        outer_files = [f for f in png_files if "Ningaloo" not in f]
+        inner_files = [f for f in png_files if "inner" in f]
+        outer_files = [f for f in png_files if "inner" not in f]
 
         # Innner and outer JSON files
         inner_path = output_dir / "inner_png_files.json"

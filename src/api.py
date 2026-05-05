@@ -978,6 +978,7 @@ async def get_filtered_image(
         import numpy as np
         import matplotlib.pyplot as plt
         import matplotlib.colors as mcolors
+        import cartopy.crs as ccrs
         from pathlib import Path
         import io
         import base64
@@ -1085,7 +1086,7 @@ async def get_filtered_image(
                 data = np.where(mask, data, np.nan)
             
             # Create the plot
-            fig, ax = plt.subplots(figsize=(10, 8), subplot_kw={'projection': None})
+            fig, ax = plt.subplots(figsize=(10, 8), subplot_kw={'projection': ccrs.PlateCarree()})
             
             # Use appropriate colormap based on satellite and parameter
             if satellite in ['sentinel3a', 'sentinel3b']:
